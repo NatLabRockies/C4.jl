@@ -58,17 +58,31 @@ function load_existing_thermaltechs!(system::SystemParams, datadir::String)
     techspath = joinpath(datadir, "existing_techs.csv")
     techs = readdlm(techspath, ',')
 
-    validate_columns(techs, ["tech", "category", "cost_generation"], techspath)
+    validate_columns(
+        techs, ["tech", "category", "cost_generation", "cost_startup",
+                "unit_size", "min_gen", "max_ramp", "min_uptime", "min_downtime"],
+        techspath)
+
     allunique(techs[:,1]) || error("Duplicate technology names in $techspath")
 
     for r in 2:size(techs, 1)
 
         techname = string(techs[r, 1])
         category = string(techs[r, 2])
+
         cost_generation = Float64(techs[r, 3]) * powerunits_MW
+        cost_startup = Float64(techs[r, 4])
+
+        unit_size = Float64(techs[r, 5]) / powerunits_MW
+        min_gen = Float64(techs[r, 6]) / powerunits_MW
+        max_ramp = Float64(techs[r, 7]) / powerunits_MW
+        min_uptime = Int(techs[r, 8])
+        min_downtime = Int(techs[r, 9])
 
         tech = ThermalExistingParams(
-            techname, category, cost_generation, ThermalExistingSiteParams[])
+            techname, category, cost_generation, cost_startup,
+            unit_size, min_gen, max_ramp, min_uptime, min_downtime,
+            ThermalExistingSiteParams[])
 
         push!(system.thermaltechs_existing, tech)
 
@@ -85,7 +99,7 @@ function load_existing_thermalsites!(system::SystemParams, datadir::String)
     sites = readdlm(sitespath, ',')
 
     validate_columns(sites,
-        ["tech", "site", "units", "unit_size"], sitespath)
+        ["tech", "site", "units"], sitespath)
 
     allunique(tuple.(sites[:,1], sites[:,2])) || error("Duplicate site names in $sitespath")
 
@@ -97,10 +111,9 @@ function load_existing_thermalsites!(system::SystemParams, datadir::String)
         techname in techs || error("Unknown tech $techname referenced in $sitespath")
 
         units = Int(sites[r, 3])
-        unit_size = Float64(sites[r, 4]) / powerunits_MW
 
         site = ThermalExistingSiteParams(
-            sitename, units, unit_size,
+            sitename, units,
             ones(n_timesteps), zeros(n_timesteps), ones(n_timesteps))
 
         tech = get_tech(system, ThermalExistingParams, techname)
@@ -128,8 +141,10 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
     techs = readdlm(techspath, ',')
 
     validate_columns(techs,
-        ["tech", "category", "cost_capital", "cost_generation",
-        "unit_size", "max_units"], techspath)
+        ["tech", "category", "cost_generation", "cost_startup", "cost_capital",
+         "max_units", "unit_size", "min_gen", "max_ramp", "min_uptime", "min_downtime"],
+        techspath)
+
     allunique(techs[:,1]) || error("Duplicate technology names in $techspath")
 
     for r in 2:size(techs, 1)
@@ -137,14 +152,21 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
         techname = string(techs[r, 1])
         category = string(techs[r, 2])
 
-        cost_capital = Float64(techs[r, 3]) * powerunits_MW
-        cost_generation = Float64(techs[r, 4]) * powerunits_MW
-        unit_size = Float64(techs[r, 5]) / powerunits_MW
+        cost_generation = Float64(techs[r, 3]) * powerunits_MW
+        cost_startup = Float64(techs[r, 4])
+        cost_capital = Float64(techs[r, 5]) * powerunits_MW
+
         max_units = Int(techs[r, 6])
 
+        unit_size = Float64(techs[r, 7]) / powerunits_MW
+        min_gen = Float64(techs[r, 8]) / powerunits_MW
+        max_ramp = Float64(techs[r, 9]) / powerunits_MW
+        min_uptime = Int(techs[r, 10])
+        min_downtime = Int(techs[r, 11])
+
         tech = ThermalCandidateParams(
-            techname, category, cost_generation, cost_capital,
-            max_units, unit_size,
+            techname, category, cost_generation, cost_startup, cost_capital,
+            max_units, unit_size, min_gen, max_ramp, min_uptime, min_downtime,
             ones(n_timesteps), zeros(n_timesteps), ones(n_timesteps))
 
         push!(system.thermaltechs_candidate, tech)

@@ -104,7 +104,7 @@ function Base.show(io::IO, ::MIME"text/plain", sys::SystemParams)
         println(io, "\t", thermaltech.name, ":")
         for site in thermaltech.sites
             println(io, "\t\t", site.name, ": ",
-                    site.units, " x ", site.unit_size * powerunits_MW, " MW")
+                    site.units, " x ", thermaltech.unit_size * powerunits_MW, " MW")
         end
     end
 

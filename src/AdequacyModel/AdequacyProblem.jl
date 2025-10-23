@@ -41,7 +41,7 @@ function load_generators(sys::SystemParams)
             for _ in 1:site.units
                 g_last += 1
                 generators_capacity[g_last, :] .=
-                    site.rating .* site.unit_size .* powerunits_MW
+                    site.rating .* tech.unit_size .* powerunits_MW
                 generators_lambda[:, g_last] .= site.λ
                 generators_mu[:, g_last] .= site.μ
             end

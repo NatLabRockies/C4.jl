@@ -3,7 +3,6 @@ struct ThermalExistingSiteParams
     name::String
 
     units::Int
-    unit_size::Float64 # MW/unit
 
     rating::Vector{Float64}
 
@@ -12,14 +11,8 @@ struct ThermalExistingSiteParams
 
 end
 
-nameplatecapacity(site::ThermalExistingSiteParams) =
-    site.units * site.unit_size
-
 availability(site::ThermalExistingSiteParams, t::Int) =
     site.rating[t] * site.μ[t] / (site.λ[t] + site.μ[t])
-
-availablecapacity(site::ThermalExistingSiteParams, t::Int) =
-    nameplatecapacity(site) * availability(site, t)
 
 struct ThermalExistingParams <: ThermalTechnology
 
@@ -27,16 +20,23 @@ struct ThermalExistingParams <: ThermalTechnology
     category::String
 
     cost_generation::Float64 # $/MWh
+    cost_startup::Float64 # $/start
+
+    unit_size::Float64 # MW/unit
+    min_gen::Float64 # MW/unit
+    max_ramp::Float64 # MW/hour
+    min_uptime::Int # hours
+    min_downtime::Int # hours
 
     sites::Vector{ThermalExistingSiteParams}
 
 end
 
 nameplatecapacity(tech::ThermalExistingParams) =
-    sum(nameplatecapacity(site) for site in tech.sites; init=0)
+    tech.unit_size * sum(site.units for site in tech.sites; init=0)
 
 availablecapacity(tech::ThermalExistingParams, t::Int) =
-    sum(availablecapacity(site, t) for site in tech.sites; init=0)
+    tech.unit_size * sum(site.units * availability(site, t) for site in tech.sites; init=0)
 
 cost_generation(tech::ThermalExistingParams) = tech.cost_generation
 
@@ -46,10 +46,16 @@ struct ThermalCandidateParams
     category::String
 
     cost_generation::Float64 # $/MWh
+    cost_startup::Float64 # $/start
     cost_capital::Float64 # annualized $/MW
 
     max_units::Int
+
     unit_size::Float64 # MW/unit
+    min_gen::Float64 # MW/unit
+    max_ramp::Float64 # MW/hour
+    min_uptime::Int # hours
+    min_downtime::Int # hours
 
     rating::Vector{Float64}
 

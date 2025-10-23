@@ -1,3 +1,2 @@
-tech,category,cost_generation
-Gas CC,Gas CC,20
-
+tech,category,cost_generation,cost_startup,unit_size,min_gen,max_ramp,min_uptime,min_downtime
+Gas CC,Gas CC,20,26623.4,355,170,250,8,5
