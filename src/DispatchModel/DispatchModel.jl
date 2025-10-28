@@ -11,7 +11,8 @@ import ..ThermalTechnology, ..VariableTechnology, ..StorageTechnology,
        ..JuMP_GreaterThanConstraintRef, ..JuMP_EqualToConstraintRef, ..varnames!,
        ..availablecapacity, ..nameplatecapacity, ..maxpower, ..maxenergy,
        ..name, ..cost, ..cost_generation, ..demand,
-       ..roundtrip_efficiency, ..operating_cost, ..max_ramp,
+       ..roundtrip_efficiency, ..operating_cost,
+       ..max_unit_ramp, ..num_units, ..unit_size, ..min_gen,
        ..variabletechs, ..storagetechs, ..thermaltechs,
        ..solve!, ..powerunits_MW
 

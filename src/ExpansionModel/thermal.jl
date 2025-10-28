@@ -26,7 +26,13 @@ cost(build::ThermalExpansion) =
 
 cost_generation(tech::ThermalExpansion) = tech.params.cost_generation
 
-max_ramp(tech::ThermalExpansion) = tech.params.max_ramp * tech.units_new
+max_unit_ramp(tech::ThermalExpansion) = tech.params.max_ramp
+
+num_units(tech::ThermalExpansion) = tech.units_new
+
+unit_size(tech::ThermalExpansion) = tech.params.unit_size
+
+min_gen(tech::ThermalExpansion) = tech.params.min_gen
 
 function ThermalExistingParams(tech::ThermalExpansion)
 
