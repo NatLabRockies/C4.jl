@@ -40,6 +40,8 @@ availablecapacity(tech::ThermalExistingParams, t::Int) =
 
 cost_generation(tech::ThermalExistingParams) = tech.cost_generation
 
+max_ramp(tech::ThermalExistingParams) = tech.max_ramp * sum(site.units for site in tech.sites; init=0)
+
 struct ThermalCandidateParams
 
     name::String

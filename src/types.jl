@@ -62,9 +62,11 @@ Returns installed capacity in `C4.powerunits_MW`.
 
 `cost_generation(tech::ThermalTechnology) -> Float64`
 Returns the marginal generating cost of `tech` in units of \$/C4.powerunits_MW.
+
+`max_ramp(tech::ThermalTechnology) -> Float64`
 """
 abstract type ThermalTechnology <: Technology end
-
+function max_ramp end
 """
 StorageTechnology is an abstract type that can be used to instantiate
 dispatch problems. Instances of StorageTechnology should define:

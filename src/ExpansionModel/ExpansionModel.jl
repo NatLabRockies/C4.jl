@@ -11,7 +11,7 @@ import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
         ..nameplatecapacity, ..availablecapacity, ..availability, ..maxpower, ..maxenergy,
         ..roundtrip_efficiency, ..operating_cost,
         ..name, ..variabletechs, ..storagetechs, ..thermaltechs,
-        ..sites, ..cost, ..cost_generation,
+        ..sites, ..cost, ..cost_generation, ..max_ramp,
         ..demand, ..solve!
 
 import ..Data: ThermalExistingParams, ThermalCandidateParams,
