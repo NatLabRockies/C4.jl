@@ -2,8 +2,13 @@ struct ThermalDispatch{G<:ThermalTechnology}
 
     dispatch::Vector{JuMP.VariableRef}
     units_committed::Vector{JuMP.VariableRef}
+    units_startup::Vector{JuMP.VariableRef}
+    units_shutdown::Vector{JuMP.VariableRef}
 
     units_committed_max::Vector{JuMP_LessThanConstraintRef}
+    commitment_state::Vector{JuMP_EqualToConstraintRef}
+    min_up_time::Vector{JuMP_LessThanConstraintRef}
+    min_down_time::Vector{JuMP_LessThanConstraintRef}
     dispatch_max::Vector{JuMP_LessThanConstraintRef}
     dispatch_min::Vector{JuMP_LessThanConstraintRef}
     ramp_up_max::Vector{JuMP_LessThanConstraintRef}
@@ -25,8 +30,23 @@ struct ThermalDispatch{G<:ThermalTechnology}
         units_committed = @variable(m, [1:T], integer=true, lower_bound = 0)
         varnames!(units_committed, "tech_units_committed[$(fullname)]", 1:T)
 
+        units_startup = @variable(m, [1:T], binary=true, lower_bound = 0)
+        varnames!(units_startup, "tech_units_startup[$(fullname)]", 1:T)
+
+        units_shutdown = @variable(m, [1:T], binary=true, lower_bound = 0)
+        varnames!(units_shutdown, "tech_units_shutdown[$(fullname)]", 1:T)
+
         units_committed_max = @constraint(m, [t in 1:T],
             units_committed[t] <= num_units(tech))
+
+        commitment_state = @constraint(m, [t in 1:T],
+            units_committed[t] == units_committed[prev_t(t, T)] + units_startup[t] - units_shutdown[t])
+
+        min_up_time = @constraint(m, [t in 1:T],
+            sum(units_startup[tt] for tt in last_n(t, min_uptime(tech), T)) <= units_committed[t])
+
+        min_down_time = @constraint(m, [t in 1:T],
+            sum(units_shutdown[tt] for tt in last_n(t, min_downtime(tech), T)) <= num_units(tech) - units_committed[t])
 
         dispatch_max = @constraint(m, [t in 1:T],
             dispatch[t] <= unit_size(tech) * units_committed[t])
@@ -35,23 +55,35 @@ struct ThermalDispatch{G<:ThermalTechnology}
             min_gen(tech) * units_committed[t] <= dispatch[t])
 
         ramp_up_max = @constraint(m, [t in 1:T],
-            dispatch[t] - dispatch[prev_t(t, T)] <= max_unit_ramp(tech) * units_committed[t])
+            dispatch[t] - dispatch[prev_t(t, T)] <= max_unit_ramp(tech) * (units_committed[t] - units_startup[t]) - min_gen(tech) * units_shutdown[t] + max(min_gen(tech), max_unit_ramp(tech)) * units_startup[t]
+            )
 
         ramp_down_max = @constraint(m, [t in 1:T],
-            dispatch[prev_t(t, T)] - dispatch[t] <= max_unit_ramp(tech) * units_committed[t])
+            dispatch[prev_t(t, T)] - dispatch[t] <= max_unit_ramp(tech) * (units_committed[t] - units_startup[t]) - min_gen(tech) * units_startup[t] + max(min_gen(tech), max_unit_ramp(tech)) * units_shutdown[t]
+            )
 
-        return new{G}(dispatch, units_committed, units_committed_max, dispatch_max, dispatch_min, ramp_up_max, ramp_down_max, tech)
+        return new{G}(dispatch, units_committed, units_startup, units_shutdown, units_committed_max, commitment_state, dispatch_max, min_up_time, min_down_time, dispatch_min, ramp_up_max, ramp_down_max, tech)
 
     end
 
 end
 
 cost(dispatch::ThermalDispatch) =
-    sum(dispatch.dispatch) * cost_generation(dispatch.tech)
+    cost_startup(dispatch.tech) * sum(dispatch.units_startup) +
+    cost_generation(dispatch.tech) * sum(dispatch.dispatch)
 
 name(dispatch::ThermalDispatch) = name(dispatch.tech)
 
 prev_t(t::Int, T::Int) = t == 1 ? T : t - 1
+
+function last_n(t::Int, n::Int, T::Int)
+    inds = Vector{Int}(undef, n)
+    for i in n:-1:1
+        inds[i] = t
+        t = prev_t(t, T)
+    end
+    return inds
+end
 
 
 struct StorageDispatch{S<:StorageTechnology}

@@ -16,6 +16,7 @@ import JuMP: optimizer_with_attributes, value, termination_status, write_to_file
 
 include("DispatchModel/sequencing.jl")
 include("AdequacySimulation.jl")
+include("DispatchModel/thermal.jl")
 
 optimizer = optimizer_with_attributes(
     HiGHS.Optimizer,

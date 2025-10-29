@@ -24,6 +24,8 @@ availablecapacity(tech::ThermalExpansion, t::Int) =
 cost(build::ThermalExpansion) =
     build.units_new * build.params.unit_size * build.params.cost_capital
 
+cost_startup(build::ThermalExpansion) = build.params.cost_startup
+
 cost_generation(tech::ThermalExpansion) = tech.params.cost_generation
 
 max_unit_ramp(tech::ThermalExpansion) = tech.params.max_ramp
@@ -33,6 +35,10 @@ num_units(tech::ThermalExpansion) = tech.units_new
 unit_size(tech::ThermalExpansion) = tech.params.unit_size
 
 min_gen(tech::ThermalExpansion) = tech.params.min_gen
+
+min_uptime(tech::ThermalExpansion) = tech.params.min_uptime
+
+min_downtime(tech::ThermalExpansion) = tech.params.min_downtime
 
 function ThermalExistingParams(tech::ThermalExpansion)
 

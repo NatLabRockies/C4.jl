@@ -38,6 +38,8 @@ nameplatecapacity(tech::ThermalExistingParams) =
 availablecapacity(tech::ThermalExistingParams, t::Int) =
     tech.unit_size * sum(site.units * availability(site, t) for site in tech.sites; init=0)
 
+cost_startup(tech::ThermalExistingParams) = tech.cost_startup
+
 cost_generation(tech::ThermalExistingParams) = tech.cost_generation
 
 max_unit_ramp(tech::ThermalExistingParams) = tech.max_ramp
@@ -47,6 +49,10 @@ num_units(tech::ThermalExistingParams) = sum(site.units for site in tech.sites; 
 unit_size(tech::ThermalExistingParams) = tech.unit_size
 
 min_gen(tech::ThermalExistingParams) = tech.min_gen
+
+min_uptime(tech::ThermalExistingParams) = tech.min_uptime
+
+min_downtime(tech::ThermalExistingParams) = tech.min_downtime
 struct ThermalCandidateParams
 
     name::String
