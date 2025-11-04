@@ -1,3 +1,9 @@
+struct FuelParams
+    name::String
+    cost::Float64 # $/MMBtu
+    co2_factor::Float64 # kg/MMBtu
+end
+
 struct ThermalExistingSiteParams
 
     name::String
@@ -19,8 +25,11 @@ struct ThermalExistingParams <: ThermalTechnology
     name::String
     category::String
 
-    cost_generation::Float64 # $/MWh
-    cost_startup::Float64 # $/start
+    fuel::FuelParams
+    heat_rate::Float64 # MMBtu/MWh
+    startup_heat::Float64 # MMBtu/start
+
+    cost_vom::Float64 # $/MWh
 
     unit_size::Float64 # MW/unit
     min_gen::Float64 # MW/unit
@@ -38,9 +47,11 @@ nameplatecapacity(tech::ThermalExistingParams) =
 availablecapacity(tech::ThermalExistingParams, t::Int) =
     tech.unit_size * sum(site.units * availability(site, t) for site in tech.sites; init=0)
 
-cost_startup(tech::ThermalExistingParams) = tech.cost_startup
+cost_startup(tech::ThermalExistingParams) =
+    tech.startup_heat * tech.fuel.cost
 
-cost_generation(tech::ThermalExistingParams) = tech.cost_generation
+cost_generation(tech::ThermalExistingParams) =
+    tech.heat_rate * tech.fuel.cost + tech.cost_vom
 
 max_unit_ramp(tech::ThermalExistingParams) = tech.max_ramp
 
@@ -53,13 +64,17 @@ min_gen(tech::ThermalExistingParams) = tech.min_gen
 min_uptime(tech::ThermalExistingParams) = tech.min_uptime
 
 min_downtime(tech::ThermalExistingParams) = tech.min_downtime
+
 struct ThermalCandidateParams
 
     name::String
     category::String
 
-    cost_generation::Float64 # $/MWh
-    cost_startup::Float64 # $/start
+    fuel::FuelParams
+    heat_rate::Float64 # MMBtu/MWh
+    startup_heat::Float64 # MMBtu/start
+
+    cost_vom::Float64 # $/MWh
     cost_capital::Float64 # annualized $/MW
 
     max_units::Int
@@ -76,6 +91,9 @@ struct ThermalCandidateParams
     μ::Vector{Float64}
 
 end
+
+cost_generation(tech::ThermalCandidateParams) =
+    tech.heat_rate * tech.fuel.cost + tech.cost_vom
 
 availability(params::ThermalCandidateParams, t::Int) =
     params.rating[t] * params.μ[t] / (params.λ[t] + params.μ[t])

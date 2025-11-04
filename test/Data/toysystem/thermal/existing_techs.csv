@@ -1,2 +1,2 @@
-tech,category,cost_generation,cost_startup,unit_size,min_gen,max_ramp,min_uptime,min_downtime
-Gas CC,Gas CC,20,26623.4,355,170,250,8,5
+tech,category,fuel,heat_rate,startup_heat,cost_vom,unit_size,min_gen,max_ramp,min_uptime,min_downtime
+Gas CC,Gas CC,Natural Gas,6.2,7215.1,1.79,355,170,250,8,5

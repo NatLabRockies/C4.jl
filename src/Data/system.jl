@@ -6,6 +6,8 @@ struct SystemParams <: System
 
     demand::Vector{Float64}
 
+    fuels::Vector{FuelParams}
+
     thermaltechs_existing::Vector{ThermalExistingParams}
     thermaltechs_candidate::Vector{ThermalCandidateParams}
 

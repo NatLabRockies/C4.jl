@@ -24,9 +24,10 @@ availablecapacity(tech::ThermalExpansion, t::Int) =
 cost(build::ThermalExpansion) =
     build.units_new * build.params.unit_size * build.params.cost_capital
 
-cost_startup(build::ThermalExpansion) = build.params.cost_startup
+cost_startup(build::ThermalExpansion) =
+    build.params.startup_heat * build.params.fuel.cost
 
-cost_generation(tech::ThermalExpansion) = tech.params.cost_generation
+cost_generation(tech::ThermalExpansion) = cost_generation(tech.params)
 
 max_unit_ramp(tech::ThermalExpansion) = tech.params.max_ramp
 
@@ -55,8 +56,10 @@ function ThermalExistingParams(tech::ThermalExpansion)
     return ThermalExistingParams(
         params.name,
         params.category,
-        params.cost_generation,
-        params.cost_startup,
+        params.fuel,
+        params.heat_rate,
+        params.startup_heat,
+        params.cost_vom,
         params.unit_size,
         params.min_gen,
         params.max_ramp,
@@ -74,8 +77,10 @@ function ThermalCandidateParams(tech::ThermalExpansion)
     return ThermalCandidateParams(
         params.name,
         params.category,
-        params.cost_generation,
-        params.cost_startup,
+        params.fuel,
+        params.heat_rate,
+        params.startup_heat,
+        params.cost_vom,
         params.cost_capital,
         params.max_units - new_units,
         params.unit_size,

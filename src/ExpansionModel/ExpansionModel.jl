@@ -104,7 +104,7 @@ function SystemParams(prob::ExpansionProblem)
             params.storagetechs_existing)
 
     return SystemParams(
-        params.name, params.timesteps, params.demand,
+        params.name, params.timesteps, params.demand, params.fuels,
         thermal_existing,
         ThermalCandidateParams.(build.thermaltechs),
         variable_existing,

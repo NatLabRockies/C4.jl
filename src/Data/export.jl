@@ -112,7 +112,7 @@ function store(
 
     DuckDB.append(appender.techs, tech.name)
     DuckDB.append(appender.techs, "thermal")
-    DuckDB.append(appender.techs, tech.cost_generation / powerunits_MW)
+    DuckDB.append(appender.techs, cost_generation(tech) / powerunits_MW)
     DuckDB.append(appender.techs, nothing)
     DuckDB.append(appender.techs, nothing)
     DuckDB.end_row(appender.techs)
@@ -127,7 +127,7 @@ function store(
 
     DuckDB.append(appender.techs, tech.name)
     DuckDB.append(appender.techs, "thermal")
-    DuckDB.append(appender.techs, tech.cost_generation / powerunits_MW)
+    DuckDB.append(appender.techs, cost_generation(tech) / powerunits_MW)
     DuckDB.append(appender.techs, tech.cost_capital / powerunits_MW)
     DuckDB.append(appender.techs, nothing)
     DuckDB.end_row(appender.techs)

@@ -4,6 +4,7 @@ function SystemParams(datadir::String)
 
     thermaldir = joinpath(datadir, "thermal")
 
+    load_fuels!(system, thermaldir)
     load_existing_thermaltechs!(system, thermaldir)
     load_existing_thermalsites!(system, thermaldir)
 
@@ -44,6 +45,7 @@ function load_system(datadir::String)
 
     return SystemParams(
         name, timestamps, demand,
+        FuelParams[],
         ThermalExistingParams[],
         ThermalCandidateParams[],
         VariableExistingParams[],
@@ -53,14 +55,36 @@ function load_system(datadir::String)
 
 end
 
+function load_fuels!(system::SystemParams, datadir::String)
+
+    fuelspath = joinpath(datadir, "fuels.csv")
+
+    data = readdlm(fuelspath, ',')
+
+    validate_columns(data, ["fuel", "cost", "co2_factor"], fuelspath)
+    allunique(data[:,1]) || error("Duplicate fuel names in $fuelspath")
+
+    for f in 2:size(data, 1)
+
+        fuelname = string(data[f, 1])
+        cost = Float64(data[f, 2])
+        co2_factor = Float64(data[f, 3])
+
+        fuel = FuelParams(fuelname, cost, co2_factor)
+        push!(system.fuels, fuel)
+
+    end
+
+end
+
 function load_existing_thermaltechs!(system::SystemParams, datadir::String)
 
     techspath = joinpath(datadir, "existing_techs.csv")
     techs = readdlm(techspath, ',')
 
-    validate_columns(
-        techs, ["tech", "category", "cost_generation", "cost_startup",
-                "unit_size", "min_gen", "max_ramp", "min_uptime", "min_downtime"],
+    validate_columns(techs,
+        ["tech", "category", "fuel", "heat_rate", "startup_heat", "cost_vom",
+         "unit_size", "min_gen", "max_ramp", "min_uptime", "min_downtime"],
         techspath)
 
     allunique(techs[:,1]) || error("Duplicate technology names in $techspath")
@@ -70,17 +94,23 @@ function load_existing_thermaltechs!(system::SystemParams, datadir::String)
         techname = string(techs[r, 1])
         category = string(techs[r, 2])
 
-        cost_generation = Float64(techs[r, 3]) * powerunits_MW
-        cost_startup = Float64(techs[r, 4])
+        fuelname = string(techs[r, 3])
 
-        unit_size = Float64(techs[r, 5]) / powerunits_MW
-        min_gen = Float64(techs[r, 6]) / powerunits_MW
-        max_ramp = Float64(techs[r, 7]) / powerunits_MW
-        min_uptime = Int(techs[r, 8])
-        min_downtime = Int(techs[r, 9])
+        heat_rate = Float64(techs[r, 4]) * powerunits_MW
+        startup_heat = Float64(techs[r, 5])
+
+        cost_vom = Float64(techs[r, 6]) * powerunits_MW
+
+        unit_size = Float64(techs[r, 7]) / powerunits_MW
+        min_gen = Float64(techs[r, 8]) / powerunits_MW
+        max_ramp = Float64(techs[r, 9]) / powerunits_MW
+        min_uptime = Int(techs[r, 10])
+        min_downtime = Int(techs[r, 11])
+
+        _, fuel = getbyname(system.fuels, fuelname)
 
         tech = ThermalExistingParams(
-            techname, category, cost_generation, cost_startup,
+            techname, category, fuel, heat_rate, startup_heat, cost_vom,
             unit_size, min_gen, max_ramp, min_uptime, min_downtime,
             ThermalExistingSiteParams[])
 
@@ -141,8 +171,10 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
     techs = readdlm(techspath, ',')
 
     validate_columns(techs,
-        ["tech", "category", "cost_generation", "cost_startup", "cost_capital",
-         "max_units", "unit_size", "min_gen", "max_ramp", "min_uptime", "min_downtime"],
+        ["tech", "category", "fuel",
+         "heat_rate", "startup_heat", "cost_vom", "cost_capital",
+         "max_units", "unit_size", "min_gen", "max_ramp",
+         "min_uptime", "min_downtime"],
         techspath)
 
     allunique(techs[:,1]) || error("Duplicate technology names in $techspath")
@@ -151,21 +183,27 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
 
         techname = string(techs[r, 1])
         category = string(techs[r, 2])
+        fuelname = string(techs[r, 3])
 
-        cost_generation = Float64(techs[r, 3]) * powerunits_MW
-        cost_startup = Float64(techs[r, 4])
-        cost_capital = Float64(techs[r, 5]) * powerunits_MW
+        heat_rate = Float64(techs[r, 4]) * powerunits_MW
+        startup_heat = Float64(techs[r, 5])
 
-        max_units = Int(techs[r, 6])
+        cost_vom = Float64(techs[r, 6]) * powerunits_MW
+        cost_capital = Float64(techs[r, 7]) * powerunits_MW
 
-        unit_size = Float64(techs[r, 7]) / powerunits_MW
-        min_gen = Float64(techs[r, 8]) / powerunits_MW
-        max_ramp = Float64(techs[r, 9]) / powerunits_MW
-        min_uptime = Int(techs[r, 10])
-        min_downtime = Int(techs[r, 11])
+        max_units = Int(techs[r, 8])
+
+        unit_size = Float64(techs[r, 9]) / powerunits_MW
+        min_gen = Float64(techs[r, 10]) / powerunits_MW
+        max_ramp = Float64(techs[r, 11]) / powerunits_MW
+        min_uptime = Int(techs[r, 12])
+        min_downtime = Int(techs[r, 13])
+
+        _, fuel = getbyname(system.fuels, fuelname)
 
         tech = ThermalCandidateParams(
-            techname, category, cost_generation, cost_startup, cost_capital,
+            techname, category, fuel, heat_rate, startup_heat,
+            cost_vom, cost_capital,
             max_units, unit_size, min_gen, max_ramp, min_uptime, min_downtime,
             ones(n_timesteps), zeros(n_timesteps), ones(n_timesteps))
 
