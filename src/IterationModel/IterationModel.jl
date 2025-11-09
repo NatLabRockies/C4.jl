@@ -20,15 +20,19 @@ function iterate_ra_cem(
     sys::SystemParams, base_chronology::TimeProxyAssignment,
     max_neue::Float64, optimizer; neue_tol::Float64=.01,
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
+    max_co2_intensity::Float64=NaN, # kg/MWh
+    co2_offset_price::Float64=9999., # $/tonne CO2
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
-    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN)
+    check_dispatch::Bool=false, check_dispatch_voll::Real=NaN)
 
     persist = length(outfile) > 0
     timeout += time()
 
-    neue_factor = total_demand(sys) * 1e-6
-    max_eue = max_neue * neue_factor
+    demand = total_demand(sys)
+
+    max_eue = max_neue * demand * 1e-6
+    max_co2 = max_co2_intensity * (demand * powerunits_MW) * 1e-9 # in Megatonnes
 
     ram_start = now()
     ram = AdequacyProblem(sys, samples=nsamples)
@@ -80,7 +84,9 @@ function iterate_ra_cem(
         n_iters += 1
         cem_start = now()
 
-        cem = ExpansionProblem(sys, chronology, eue_estimator, max_eue, optimizer)
+        cem = ExpansionProblem(sys, chronology, eue_estimator, max_eue,
+                               max_co2, co2_offset_price, optimizer)
+
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
         # println("Recurrences:")

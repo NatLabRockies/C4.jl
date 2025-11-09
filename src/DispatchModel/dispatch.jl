@@ -72,6 +72,10 @@ cost(dispatch::ThermalDispatch) =
     cost_startup(dispatch.tech) * sum(dispatch.units_startup) +
     cost_generation(dispatch.tech) * sum(dispatch.dispatch)
 
+co2(dispatch::ThermalDispatch) =
+    co2_startup(dispatch.tech) * sum(dispatch.units_startup) +
+    co2_generation(dispatch.tech) * sum(dispatch.dispatch)
+
 name(dispatch::ThermalDispatch) = name(dispatch.tech)
 
 prev_t(t::Int, T::Int) = t == 1 ? T : t - 1
@@ -244,3 +248,6 @@ cost(dispatch::SystemDispatch) =
     sum(cost(variabletech) for variabletech in dispatch.variabletechs; init=0) +
     sum(cost(storagetech) for storagetech in dispatch.storagetechs; init=0) +
     (isnan(dispatch.voll) ? 0 : sum(dispatch.unserved_energy) * (dispatch.voll * powerunits_MW))
+
+co2(dispatch::SystemDispatch) =
+    sum(co2(thermaltech) for thermaltech in dispatch.thermaltechs; init=0)

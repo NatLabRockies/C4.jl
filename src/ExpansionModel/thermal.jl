@@ -29,6 +29,11 @@ cost_startup(build::ThermalExpansion) =
 
 cost_generation(tech::ThermalExpansion) = cost_generation(tech.params)
 
+co2_startup(build::ThermalExpansion) =
+    build.params.startup_heat * build.params.fuel.co2_factor
+
+co2_generation(tech::ThermalExpansion) = co2_generation(tech.params)
+
 max_unit_ramp(tech::ThermalExpansion) = tech.params.max_ramp
 
 num_units(tech::ThermalExpansion) = tech.units_new

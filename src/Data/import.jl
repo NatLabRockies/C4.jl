@@ -68,7 +68,7 @@ function load_fuels!(system::SystemParams, datadir::String)
 
         fuelname = string(data[f, 1])
         cost = Float64(data[f, 2])
-        co2_factor = Float64(data[f, 3])
+        co2_factor = Float64(data[f, 3]) * 1e-9 # kg to Megatonnes
 
         fuel = FuelParams(fuelname, cost, co2_factor)
         push!(system.fuels, fuel)

@@ -76,6 +76,10 @@ Returns the marginal generating cost of `tech` in units of \$/C4.powerunits_MW.
 `min_downtime(tech::ThermalTechnology) -> Float64`
 
 `cost_startup(tech::ThermalTechnology) -> Float64`
+
+`co2_generation(tech::ThermalTechnology) -> Float64`
+
+`co2_startup(tech::ThermalTechnology) -> Float64`
 """
 abstract type ThermalTechnology <: Technology end
 function max_unit_ramp end
@@ -85,6 +89,8 @@ function min_gen end
 function min_uptime end
 function min_downtime end
 function cost_startup end
+function co2_startup end
+function co2_generation end
 
 """
 StorageTechnology is an abstract type that can be used to instantiate
@@ -106,6 +112,7 @@ function roundtrip_efficiency end
 
 
 function cost end
+function co2 end
 
 function solve! end
 

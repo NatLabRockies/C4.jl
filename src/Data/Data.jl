@@ -9,6 +9,7 @@ import ..VariableSite, ..Technology,
        ..System, ..cost_generation, ..cost_startup,
        ..maxpower, ..maxenergy, ..roundtrip_efficiency, ..operating_cost,
        ..max_unit_ramp, ..num_units, ..unit_size, ..min_gen, ..min_uptime, ..min_downtime,
+       ..co2_startup, ..co2_generation,
        ..name, ..variabletechs, ..storagetechs, ..thermaltechs,
        ..sites, ..availability, ..nameplatecapacity, ..availablecapacity,
        ..demand, ..powerunits_MW

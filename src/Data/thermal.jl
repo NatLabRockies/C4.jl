@@ -1,7 +1,7 @@
 struct FuelParams
     name::String
     cost::Float64 # $/MMBtu
-    co2_factor::Float64 # kg/MMBtu
+    co2_factor::Float64 # Megatonnes/MMBtu
 end
 
 struct ThermalExistingSiteParams
@@ -53,6 +53,12 @@ cost_startup(tech::ThermalExistingParams) =
 cost_generation(tech::ThermalExistingParams) =
     tech.heat_rate * tech.fuel.cost + tech.cost_vom
 
+co2_startup(tech::ThermalExistingParams) =
+    tech.startup_heat * tech.fuel.co2_factor
+
+co2_generation(tech::ThermalExistingParams) =
+    tech.heat_rate * tech.fuel.co2_factor
+
 max_unit_ramp(tech::ThermalExistingParams) = tech.max_ramp
 
 num_units(tech::ThermalExistingParams) = sum(site.units for site in tech.sites; init=0)
@@ -94,6 +100,9 @@ end
 
 cost_generation(tech::ThermalCandidateParams) =
     tech.heat_rate * tech.fuel.cost + tech.cost_vom
+
+co2_generation(tech::ThermalCandidateParams) =
+    tech.heat_rate * tech.fuel.co2_factor
 
 availability(params::ThermalCandidateParams, t::Int) =
     params.rating[t] * params.μ[t] / (params.λ[t] + params.μ[t])

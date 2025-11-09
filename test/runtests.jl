@@ -41,7 +41,7 @@ solve!(pcm)
 # unnormalized EUE and powerunits_MW!
 # Nonzero values need to be scaled appropriately
 # Here region.demand is already in powerunits_MW
-max_eue = total_demand(sys) / 10_000 # 100 ppm
+max_eue = total_demand(sys) / 100_000 # 10 ppm
 
 # For iterate_ra_cem, which takes NEUE
 max_neue = 10.
@@ -56,7 +56,7 @@ println("EUEs: ", ram_results.eues)
 
 println("\n\nCopper sheet system, repeated chronology, manual iteration")
 
-cem = ExpansionProblem(sys, repeatedchrono, null_eue, max_eue, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, null_eue, max_eue, NaN, NaN, optimizer)
 write_to_file(cem.model, "model.lp")
 solve!(cem)
 
@@ -72,7 +72,7 @@ println("EUEs: ", ram_results.eues)
 
 eue_params = [EUECuttingPlaneParams(cem.builds, ram_results)]
 
-cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, NaN, NaN, optimizer)
 write_to_file(cem.model, "model_riskcurves_1.lp")
 solve!(cem)
 
@@ -88,7 +88,7 @@ println("EUEs: ", ram_results.eues)
 
 push!(eue_params, EUECuttingPlaneParams(cem.builds, ram_results))
 
-cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, NaN, NaN, optimizer)
 write_to_file(cem.model, "model_riskcurves_2.lp")
 solve!(cem)
 
@@ -112,8 +112,21 @@ sys_built = SystemParams(cem)
 display(sys_built)
 println("LOLPs: ", ram.lolps)
 println("EUEs: ", ram.eues)
+println("NEUE: ", neue(ram))
 
 println("Capex: ", value(capex(cem)))
 println("Opex: ", value(opex(cem)))
+println("Carbon Offsets Cost: ", value(carbon_offset_cost(cem)))
+println()
+
 println("System Cost: ", value(cost(cem)))
 println("System LCOE: ", value(lcoe(cem)))
+println("System Emissions Intensity: ", value(emissions_intensity(cem)))
+
+ram = AdequacyProblem(sys_built, samples=100_000)
+ram_results = solve(ram)
+println("\nNEUE = ", neue(ram_results))
+
+pcm = DispatchProblem(sys_built, fullchrono, optimizer, voll=voll)
+solve!(pcm)
+println("Operating Cost: ", value(cost(pcm)))
