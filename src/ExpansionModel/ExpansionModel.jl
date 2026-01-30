@@ -58,7 +58,8 @@ mutable struct ExpansionProblem
         system::SystemParams,
         riskparams::RiskEstimateParams,
         eue_max::Vector{Float64}, # in powerunits_MWh
-        optimizer)
+        optimizer,
+        seasonal_constraints::Bool=false)
 
         n_timesteps = length(system.timesteps)
         n_regions = length(system.regions)
@@ -82,7 +83,7 @@ mutable struct ExpansionProblem
             ReliabilityDispatch, m, builds, riskparams.times)
 
         reliabilityconstraints = ReliabilityConstraints(
-            m, builds, reliabilitydispatch.dispatches, riskparams, eue_max)
+            m, builds, reliabilitydispatch.dispatches, riskparams, eue_max, seasonal_constraints)
 
         opex_scalar = 8766 / n_timesteps
 

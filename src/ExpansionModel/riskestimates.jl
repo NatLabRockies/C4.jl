@@ -95,7 +95,7 @@ struct ReliabilityConstraints
 
     function ReliabilityConstraints(
         m::JuMP.Model, system::System, dispatches::Vector{<:ReliabilityDispatch},
-        riskparams::RiskEstimateParams, eue_max::Vector{Float64})
+        riskparams::RiskEstimateParams, eue_max::Vector{Float64}, seasonalconstraints::Bool)
 
         n_regions = length(system.regions)
 
@@ -104,14 +104,26 @@ struct ReliabilityConstraints
             for (dispatch, periodriskparams)
             in zip(dispatches, riskparams.periods)]
 
-        region_eue = @expression(m, [r in 1:n_regions],
-            sum(sum(estimate.eue[r, :]) for estimate in eue_estimates))
+        if seasonalconstraints
+            @info "Adding seasonal constraints to ReliabilityConstraints"
+            n_periods = length(riskparams.periods)
+            region_eue = Vector{JuMP_ExpressionRef}(undef, 0)
+            region_eue_max = Vector{JuMP_LessThanConstraintRef}(undef, 0)
 
-        region_eue_max = @constraint(m, [r in 1:n_regions],
-            region_eue[r] <= eue_max[r])
-
+            for p in 1:n_periods, r in 1:n_regions
+                expr = @expression(m, sum(eue_estimates[p].eue[r, :]))
+                constraint = @constraint(m, expr <= eue_max[r])
+                push!(region_eue, expr)
+                push!(region_eue_max, constraint)
+            end
+            new(eue_estimates, region_eue, region_eue_max)
+        else
+            region_eue = @expression(m, [r in 1:n_regions],
+                        sum(sum(estimate.eue[r, :]) for estimate in eue_estimates))
+            
+            region_eue_max = @constraint(m, [r in 1:n_regions],
+                             region_eue[r, p] <= eue_max[r])
+        end
         new(eue_estimates, region_eue, region_eue_max)
-
     end
-
 end
