@@ -1,4 +1,3 @@
-
 struct AdequacyProblem
 
     sys::SystemParams
@@ -39,7 +38,7 @@ function load_regions(sys::SystemParams, meta)
         load[r, :] = round.(Int, region.demand .* powerunits_MW)
     end
 
-    return Regions{meta.N, meta.P}(names, load)
+    return PRASCore.Regions{meta.N, meta.P}(names, load)
 
 end
 
@@ -97,7 +96,7 @@ function load_generators(sys::SystemParams, meta)
 
     end
 
-    generators = Generators{meta.N, meta.L, meta.T, meta.P}(
+    generators = PRASCore.Generators{meta.N, meta.L, meta.T, meta.P}(
         names, categories, capacity, lambda, mu)
 
     return generators, region_gen_idxs
@@ -177,7 +176,7 @@ function load_storages(sys::SystemParams, meta)
 
     end
 
-    storages = Storages{meta.N, meta.L, meta.T, meta.P, meta.E}(
+    storages = PRASCore.Storages{meta.N, meta.L, meta.T, meta.P, meta.E}(
         names, categories,
         power_capacity, power_capacity, energy_capacity,
         oneway_efficiency, oneway_efficiency, allones, allzeros, allones)
@@ -196,7 +195,7 @@ function load_generatorstorages(sys::SystemParams, meta)
     fltvals = zeros(Float64, 0, meta.N)
 
     generatorstorages =
-        GeneratorStorages{meta.N, meta.L, meta.T, meta.P, meta.E}(
+        PRASCore.GeneratorStorages{meta.N, meta.L, meta.T, meta.P, meta.E}(
         String[], String[],
         intvals, intvals, intvals, fltvals, fltvals, fltvals,
         intvals, intvals, intvals, fltvals, fltvals)
@@ -236,10 +235,10 @@ function load_transmission(sys::SystemParams, meta)
 
     end
 
-    interfaces = Interfaces{meta.N, meta.P}(
+    interfaces = PRASCore.Interfaces{meta.N, meta.P}(
         from, to, capacity, capacity)
 
-    lines = Lines{meta.N, meta.L, meta.T, meta.P}(
+    lines = PRASCore.Lines{meta.N, meta.L, meta.T, meta.P}(
         names, names, capacity, capacity, lambda, mu)
 
     return interfaces, lines, interface_line_idxs

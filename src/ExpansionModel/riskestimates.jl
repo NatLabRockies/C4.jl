@@ -1,116 +1,179 @@
-struct RiskEstimatePlaneParams
+struct ThermalEUEReduction
 
-    base_eue::Float64
-
-    # (conditionally) Deterministic Capacity:
-    # Available Variable Gen + Available Thermal Gen
-    # + Storage Discharge - Storage Charge + Imports - Exports
-    available_capacity::Float64
-
-    # EUE change associated with adding (conditionally) deterministic capacity
+    nameplate::Float64
     dEUE::Float64
 
-end
+    function ThermalEUEReduction(build::ThermalExpansion, lolps::Vector{Float64})
 
-function eue_estimate(
-    available_capacity::JuMP_ExpressionRef,
-    riskparams::RiskEstimatePlaneParams)
+        T = length(lolps)
+        nameplate = value(nameplatecapacity(build))
+        dEUE = -sum(lolps[t] * availability(build.params, t) for t in 1:T)
 
-    return riskparams.base_eue - riskparams.dEUE *
-        (available_capacity - riskparams.available_capacity)
-
-end
-
-const RiskEstimatePeriodParams = Array{RiskEstimatePlaneParams,3} # RxTxJ
-
-struct RiskEstimateParams
-
-    times::TimeProxyAssignment
-    periods::Vector{RiskEstimatePeriodParams}
-
-    function RiskEstimateParams(
-        times::TimeProxyAssignment, estimators::Vector{RiskEstimatePeriodParams}
-    )
-
-        length(times.periods) == length(estimators) ||
-            error("Mismatched count of dispatch periods and EUE estimators")
-
-        new(times, estimators)
+        return new(nameplate, dEUE)
 
     end
 
 end
 
-# TODO: Could implement iterator interface here for slightly nicer usage
-allperiods(riskparams::RiskEstimateParams) =
-    [(period, riskparams.periods[i])
-     for (i, period) in enumerate(riskparams.times.periods)]
+eue_adjustment(riskparams::ThermalEUEReduction, build::ThermalExpansion) =
+    riskparams.dEUE * (nameplatecapacity(build) - riskparams.nameplate)
 
-function nullestimator(times::TimeProxyAssignment, n_regions::Int)
+struct VariableSiteEUEReduction
+    nameplate::Float64
+    dEUE::Float64
 
-    n_periods = length(times.periods)
-    n_timesteps = times.daylength
+    function VariableSiteEUEReduction(
+        build::VariableSiteExpansion, lolps::Vector{Float64})
 
-    nullperiod = Array{RiskEstimatePlaneParams,3}(undef, n_regions, n_timesteps, 0)
+        T = length(lolps)
+        nameplate = value(nameplatecapacity(build))
+        dEUE = -sum(lolps[t] * availability(build, t) for t in 1:T)
 
-    return RiskEstimateParams(times, fill(nullperiod, n_periods))
+        return new(nameplate, dEUE)
+
+    end
 
 end
 
-struct ReliabilityEstimate
+eue_adjustment(riskparams::VariableSiteEUEReduction, build::VariableSiteExpansion) =
+    riskparams.dEUE * (nameplatecapacity(build) - riskparams.nameplate)
 
-    period::TimePeriod
+struct VariableEUEReduction
 
-    eue::Matrix{JuMP.VariableRef}
-    eue_planes::Array{JuMP_GreaterThanConstraintRef,3}
+    sites::Vector{VariableSiteEUEReduction}
 
-    function ReliabilityEstimate(
-        m::JuMP.Model, system::System,
-        dispatch::ReliabilityDispatch,
-        riskparams::RiskEstimatePeriodParams)
+    function VariableEUEReduction(build::VariableExpansion, lolps::Vector{Float64})
 
-        R, T, J = size(riskparams)
-        period_name = dispatch.period.name
+        sites = [VariableSiteEUEReduction(site, lolps) for site in build.sites]
 
-        eue = @variable(m, [1:R, 1:T], lower_bound = 0)
-        varnames!(eue, "eue[$(period_name)]", name.(system.regions), 1:T)
+        return new(sites)
 
-        eue_planes = @constraint(m, [r in 1:R, t in 1:T, j in 1:J],
-            eue[r,t] >= eue_estimate(
-                dispatch.available_capacity[r,t], riskparams[r,t,j])
+    end
+
+end
+
+eue_adjustment(riskparams::VariableEUEReduction, build::VariableExpansion) =
+    sum(eue_adjustment(rp_site, b_site)
+        for (rp_site, b_site) in zip(riskparams.sites, build.sites); init=0)
+
+struct StorageEUEReduction
+
+    nameplate_power::Float64
+    dEUE_power::Float64
+
+    nameplate_energy::Float64
+    dEUE_energy::Float64
+
+    function StorageEUEReduction(build::StorageExpansion, stor_dEUEs::StorMarginalEUE)
+
+        return new(
+            value(maxpower(build)),
+            stor_dEUEs.charge + stor_dEUEs.discharge,
+            value(maxenergy(build)),
+            stor_dEUEs.energy
         )
 
-        new(dispatch.period, eue, eue_planes)
+    end
+
+end
+
+eue_adjustment(riskparams::StorageEUEReduction, build::StorageExpansion) =
+        riskparams.dEUE_power * (build.power_new - riskparams.nameplate_power) +
+        riskparams.dEUE_energy * (build.energy_new - riskparams.nameplate_energy)
+
+struct EUECuttingPlaneRegionParams
+    thermaltechs::Vector{ThermalEUEReduction}
+    variabletechs::Vector{VariableEUEReduction}
+    storagetechs::Vector{StorageEUEReduction}
+
+    function EUECuttingPlaneRegionParams(builds::RegionExpansion, r::Int, adequacy::AdequacyResult)
+
+        stor_dEUEs = adequacy.marginal_eue.storages
+
+        stor_idxs = adequacy.marginal_eue.region_stor_idxs[r]
+        lolps = adequacy.shortfalls.eventperiod_period_mean
+
+        thermaltechs = [ThermalEUEReduction(build, lolps)
+                        for build in builds.thermaltechs]
+
+        variabletechs = [VariableEUEReduction(build, lolps)
+                        for build in builds.variabletechs]
+
+        storagetechs = [StorageEUEReduction(build, stor_dEUEs[s])
+                        for (s, build) in zip(stor_idxs, builds.storagetechs)]
+
+        return new(thermaltechs, variabletechs, storagetechs)
 
     end
+
+end
+
+function eue_adjustment(params::EUECuttingPlaneRegionParams, builds::RegionExpansion)
+
+
+    thermal_adjustments = sum(eue_adjustment(riskparams, build)
+        for (riskparams, build) in zip(params.thermaltechs, builds.thermaltechs);
+        init=0
+    )
+
+    variable_adjustments = sum(eue_adjustment(riskparams, build)
+        for (riskparams, build) in zip(params.variabletechs, builds.variabletechs);
+        init=0
+    )
+
+    storage_adjustments = sum(eue_adjustment(riskparams, build)
+        for (riskparams, build) in zip(params.storagetechs, builds.storagetechs);
+        init=0
+    )
+
+    return thermal_adjustments + variable_adjustments + storage_adjustments
+
+end
+
+struct EUECuttingPlaneParams
+
+    base_eue::Float64
+    regions::Vector{EUECuttingPlaneRegionParams}
+    # TODO: Also collect / use transmission EUE impacts
+
+end
+
+function cuttingplane(
+    m::JuMP.Model, eue::JuMP.VariableRef, params::EUECuttingPlaneParams,
+    builds::SystemExpansion)
+
+    expansion_adjustments = sum(eue_adjustment(riskparams, builds)
+        for (riskparams, builds) in zip(params.regions, builds.regions))
+
+    plane = @constraint(m, eue >= params.base_eue + expansion_adjustments)
+    JuMP.set_name(plane, "eue_cutting_plane")
+
+    return plane
 
 end
 
 struct ReliabilityConstraints
 
-    estimates::Vector{ReliabilityEstimate}
+    eue_params::Vector{EUECuttingPlaneParams}
 
-    region_eue::Vector{JuMP_ExpressionRef}
-    region_eue_max::Vector{JuMP_LessThanConstraintRef}
+    eue::JuMP.VariableRef
+    eue_max::JuMP_LessThanConstraintRef
+    eue_cuttingplanes::Vector{JuMP_GreaterThanConstraintRef}
 
     function ReliabilityConstraints(
-        m::JuMP.Model, system::System, dispatches::Vector{<:ReliabilityDispatch},
-        riskparams::RiskEstimateParams, eue_max::Vector{Float64})
+        m::JuMP.Model, builds::SystemExpansion,
+        eue_params::Vector{EUECuttingPlaneParams}, eue_max::Float64)
 
-        n_regions = length(system.regions)
+        eue = @variable(m, lower_bound = 0)
+        JuMP.set_name(eue, "eue")
 
-        eue_estimates = [
-            ReliabilityEstimate(m, system, dispatch, periodriskparams)
-            for (dispatch, periodriskparams)
-            in zip(dispatches, riskparams.periods)]
+        eue_max = @constraint(m, eue <= eue_max)
+        JuMP.set_name(eue_max, "eue_max")
 
-        region_eue = @expression(m, [r in 1:n_regions],
-            sum(sum(estimate.eue[r, :]) for estimate in eue_estimates))
+        eue_cuttingplanes = [cuttingplane(m, eue, params, builds)
+                             for params in eue_params]
 
-        region_eue_max = @constraint(m, [r in 1:n_regions],
-            region_eue[r] <= eue_max[r])
-
-        new(eue_estimates, region_eue, region_eue_max)
+        new(eue_params, eue, eue_max, eue_cuttingplanes)
 
     end
 
