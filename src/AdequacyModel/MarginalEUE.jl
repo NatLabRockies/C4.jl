@@ -25,6 +25,8 @@ struct MarginalEUEAccumulator <: ResultAccumulator{MarginalEUE}
     nsamples::Int 
 
     storage_state::Vector{EUEStorageBinding}
+    storage_chargelimit_reached::Vector{Int}
+
     storage_charge::Vector{Float64}
     storage_discharge::Vector{Float64}
     storage_energy::Vector{Float64}
@@ -38,7 +40,7 @@ function PRASCore.Results.accumulator(
     n_storages = length(sys.storages)
 
     return MarginalEUEAccumulator(
-        nsamples, fill(NonBinding, n_storages),
+        nsamples, fill(NonBinding, n_storages), zeros(Int, n_storages),
         zeros(n_storages), zeros(n_storages), zeros(n_storages))
 
 end
@@ -105,8 +107,10 @@ function PRASCore.Simulations.record!(
 
         if charge_edge.flow == maxcharge
             acc.storage_state[s] = ChargeBinding
+            acc.storage_chargelimit_reached[s] += 1
         elseif storageenergy == maxenergy
             acc.storage_state[s] = ReservoirBinding
+            acc.storage_chargelimit_reached[s] = 0
         end
 
     end
@@ -128,9 +132,6 @@ function PRASCore.Simulations.record!(
 
     !has_shortfall && return
 
-    # println(state.stors_energy, " / ",
-    #         system.storages.energy_capacity[:,t])
-
     for (s, sd_idx) in enumerate(problem.storage_discharge_edges)
 
         discharge_edge = problem.fp.edges[sd_idx]
@@ -139,19 +140,14 @@ function PRASCore.Simulations.record!(
         if discharge_edge.flow == maxdischarge
             acc.storage_discharge[s] += 1
         elseif acc.storage_state[s] == ChargeBinding
-            acc.storage_charge[s] += system.storages.charge_efficiency[s,t]^2
+            count_limited = acc.storage_chargelimit_reached[s]
+            acc.storage_charge[s] += count_limited * system.storages.charge_efficiency[s,t]^2
+            acc.storage_state[s] = NonBinding
+            acc.storage_chargelimit_reached[s] = 0
         elseif acc.storage_state[s] == ReservoirBinding
             acc.storage_energy[s] += 1
+            acc.storage_state[s] = NonBinding
         end
-
-        # Might be more correct to only reset this during non-shortfall conditions?
-        # We need to properly account for reservoir/charge constraint impacts
-        # during multi-period shortfall conditions
-        # Better to overestimate improvements than underestimate, so better
-        # to double-count benefits than miss some?
-        # If we always draw down storage at max discharge before running out of
-        # energy, we'll never see the use of extra energy or charge capacity
-        acc.storage_state[s] = NonBinding
 
     end
 
