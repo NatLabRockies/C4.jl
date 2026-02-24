@@ -6,32 +6,29 @@ using C4.DispatchModel
 using C4.ExpansionModel
 
 import ..store, ..powerunits_MW
-import C4.ExpansionModel: RiskEstimateParams, RiskEstimatePeriodParams,
-                          RiskEstimatePlaneParams
+import C4.ExpansionModel: EUECuttingPlaneParams, EUECuttingPlaneRegionParams
 
 import Dates: Date, now
 import DBInterface
 import DelimitedFiles: writedlm
 import DuckDB
 import JuMP: value
-import PRAS: EUE, NEUE, val
 
 export iterate_ra_cem
 
 function iterate_ra_cem(
     sys::SystemParams, base_chronology::TimeProxyAssignment,
-    max_neues::Vector{Float64}, optimizer;
+    max_neue::Float64, optimizer; neue_tol::Float64=.01,
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
     check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN)
 
     persist = length(outfile) > 0
-    max_neue = maximum(max_neues)
     timeout += time()
 
-    neue_factors = [sum(region.demand) * 1e-6 for region in sys.regions]
-    max_eues = max_neues .* neue_factors
+    neue_factor = sum(sum(region.demand) for region in sys.regions) * 1e-6
+    max_eue = max_neue * neue_factor
 
     n_regions = length(sys.regions)
 
@@ -40,7 +37,14 @@ function iterate_ra_cem(
     ram_result = solve(ram)
     ram_end = now()
 
-    show_neues(ram_result)
+    println("NEUE: ", neue(ram_result))
+    println("LOLE: ", sum(ram_result.lolps))
+    # println("LOLPs: ", ram_result.lolps)
+    # println("EUEs: ", ram_result.eues)
+    # println("Generation dEUE: ", ram_result.generation_dEUEs)
+    # println("Storage Power dEUE: ", ram_result.storage_power_dEUEs)
+    # println("Storage Energy dEUE: ", ram_result.storage_energy_dEUEs)
+    #show_neues(ram_result)
 
     aug_start = now()
 
@@ -51,7 +55,6 @@ function iterate_ra_cem(
         base_chronology
     end
 
-    eue_estimator = nullestimator(chronology, n_regions)
 
     aug_end = now()
 
@@ -70,7 +73,8 @@ function iterate_ra_cem(
     sys_built = nothing
     cem = nothing
     prev_cem = nothing
-    adequacy_results = ExpansionAdequacyContext[]
+    # Shouldn't we use initial RA results here? Right now they're only used for ASPP
+    eue_estimator = EUECuttingPlaneParams[]
     n_iters = 0
 
     while (time() < timeout)
@@ -78,13 +82,13 @@ function iterate_ra_cem(
         n_iters += 1
         cem_start = now()
 
-        cem = ExpansionProblem(sys, eue_estimator, max_eues, optimizer)
+        cem = ExpansionProblem(sys, chronology, eue_estimator, max_eue, optimizer)
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
-        println("Recurrences:")
-        for recc in cem.reliabilitydispatch.recurrences
-            println(recc.repetitions, " x ", recc.dispatch.period.name)
-        end
+        # println("Recurrences:")
+        # for recc in cem.economicdispatch.recurrences
+        #     println(recc.repetitions, " x ", recc.dispatch.period.name)
+        # end
 
         solve!(cem)
         cem_end = now()
@@ -93,22 +97,28 @@ function iterate_ra_cem(
         sys_built = SystemParams(cem)
         ram = AdequacyProblem(sys_built, samples=nsamples)
         ram_result = solve(ram)
-        push!(adequacy_results, ExpansionAdequacyContext(cem, ram_result))
         ram_end = now()
 
-        show_neues(ram_result)
+        println("NEUE: ", neue(ram_result))
+        println("LOLE: ", sum(ram_result.lolps))
+        # println("LOLPs: ", ram_result.lolps)
+        # println("EUEs: ", ram_result.eues)
+        # println("Generation dEUE: ", ram_result.generation_dEUEs)
+        # println("Storage Power dEUE: ", ram_result.storage_power_dEUEs)
+        # println("Storage Energy dEUE: ", ram_result.storage_energy_dEUEs)
 
-        is_adequate = all(region_neues(ram_result) .<= max_neues)
+        is_adequate = neue(ram_result) <= max_neue * (1 + neue_tol)
 
         aug_start = now()
 
-        aspp && (chronology = add_stressperiod(sys, chronology, ram_result,
-                                               skip_existing=skip_existing_stress_periods))
+        if aspp
+            chronology = add_stressperiod(
+                sys, chronology, ram_result,
+                skip_existing=skip_existing_stress_periods)
+        end
 
-        eue_estimator = if endog_risk
-            RiskEstimateParams(chronology, adequacy_results)
-        else
-            nullestimator(chronology, n_regions)
+        if endog_risk
+            push!(eue_estimator, EUECuttingPlaneParams(cem, ram_result))
         end
 
         aug_end = now()
@@ -156,7 +166,7 @@ function iterate_ra_cem(
 
     end
 
-    return cem, ram, pcm
+    return cem, ram_result, pcm
 
 end
 
@@ -165,8 +175,9 @@ function add_stressperiod(
     skip_existing::Bool=false
 )
 
-    eues = sum(adequacy.shortfalls.shortfall_mean, dims=1)
-    days = reshape(eues, times.daylength, :)
+    # TODO: Could use gen_dEUEs now instead of EUE? Would capture storage
+    #       charging opportunities
+    days = reshape(adequacy.eues, times.daylength, :)
     days = vec(sum(days, dims=1))
     og_new_day = argmax(days)
 
@@ -204,60 +215,20 @@ end
 already_included(hour::Int, periods::Vector{TimePeriod}) =
     any(p -> in(hour, p.timesteps), periods)
 
-function RiskEstimateParams(
-    time::TimeProxyAssignment, results::Vector{ExpansionAdequacyContext})
-
-    period_params = [
-        RiskEstimatePeriodParams(results, time, p)
-        for p in eachindex(time.periods)
-    ]
-
-    return RiskEstimateParams(time, period_params)
-
-end
-
-function RiskEstimatePeriodParams(
-    adequacycontexts::Vector{ExpansionAdequacyContext},
-    time::TimeProxyAssignment,
-    p::Int
-)
-
-    R = size(first(adequacycontexts).available_capacity, 1)
-    T = time.daylength
-    J = length(adequacycontexts)
-
-    representative_ts = time.periods[p].timesteps
-    represented_ts = represented_timeslices(time, p)
-
-    planes = Array{RiskEstimatePlaneParams,3}(undef, R, T, J)
-
-    for (j, adequacycontext) in enumerate(adequacycontexts)
-
-        shortfalls = adequacycontext.adequacy.shortfalls
-
-        availablecapacity =
-            adequacycontext.available_capacity[:, representative_ts]
-
-        base_eue = zeros(R,T)
-        dEUE = zeros(R,T)
-
-        for ts in represented_ts
-            base_eue .+= shortfalls.shortfall_mean[:, ts] ./ powerunits_MW
-            dEUE .+= shortfalls.eventperiod_regionperiod_mean[:, ts]
-        end
-
-        planes[:,:,j] .= RiskEstimatePlaneParams.(
-            base_eue, availablecapacity, dEUE)
-
-    end
-
-    return planes
-
-end
-
 function represented_timeslices(time::TimeProxyAssignment, p::Int)
     T = time.daylength
     return [((d-1)*T+1):(d*T) for d in findall(isequal(p), time.days)]
+end
+
+function EUECuttingPlaneParams(cem::ExpansionProblem, adequacy::AdequacyResult)
+
+    base_eue = sum(adequacy.eues) / powerunits_MW
+
+    regions = [EUECuttingPlaneRegionParams(builds, r, adequacy)
+               for (r, builds) in enumerate(cem.builds.regions)]
+
+    return EUECuttingPlaneParams(base_eue, regions)
+
 end
 
 end

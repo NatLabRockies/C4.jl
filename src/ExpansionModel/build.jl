@@ -98,22 +98,23 @@ function RegionParams(build::RegionExpansion)
     region = build.params
 
     thermal_existing = vcat(
-            region.thermaltechs_existing,
             [ThermalExistingParams(tech)
              for tech in build.thermaltechs
-             if value(nameplatecapacity(tech)) > 0])
+             if value(nameplatecapacity(tech)) > 0],
+            region.thermaltechs_existing)
 
     variable_existing = vcat(
-            region.variabletechs_existing,
             [VariableExistingParams(tech)
              for tech in build.variabletechs
-             if value(nameplatecapacity(tech)) > 0])
+             if value(nameplatecapacity(tech)) > 0],
+            region.variabletechs_existing)
 
+    # We leave in all storage resources (whether built or not)
+    # in order to simplify extracting marginal EUE reductions from
+    # PRAS results later
     storage_existing = vcat(
-            region.storagetechs_existing,
-            [StorageExistingParams(tech)
-             for tech in build.storagetechs
-             if value(maxpower(tech)) > 0])
+            [StorageExistingParams(tech) for tech in build.storagetechs],
+            region.storagetechs_existing)
 
     return RegionParams(
         region.name, region.demand,
