@@ -61,16 +61,12 @@ struct StorageEUEReduction
     nameplate_power::Float64
     dEUE_power::Float64
 
-    nameplate_energy::Float64
-    dEUE_energy::Float64
-
     function StorageEUEReduction(build::StorageExpansion, stor_dEUEs::StorMarginalEUE)
 
         return new(
             value(maxpower(build)),
-            stor_dEUEs.charge + stor_dEUEs.discharge,
-            value(maxenergy(build)),
-            stor_dEUEs.energy
+            stor_dEUEs.charge + stor_dEUEs.discharge +
+            build.params.duration * stor_dEUEs.energy
         )
 
     end
@@ -78,8 +74,7 @@ struct StorageEUEReduction
 end
 
 eue_adjustment(riskparams::StorageEUEReduction, build::StorageExpansion) =
-        riskparams.dEUE_power * (build.power_new - riskparams.nameplate_power) +
-        riskparams.dEUE_energy * (build.energy_new - riskparams.nameplate_energy)
+        riskparams.dEUE_power * (build.power_new - riskparams.nameplate_power)
 
 struct EUECuttingPlaneRegionParams
     thermaltechs::Vector{ThermalEUEReduction}

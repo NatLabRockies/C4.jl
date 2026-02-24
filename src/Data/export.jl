@@ -198,7 +198,7 @@ function store(appender::DataAppender, stor::StorageCandidateParams, region::Reg
     DuckDB.append(appender.techs, "storage")
     DuckDB.append(appender.techs, stor.cost_operation / powerunits_MW)
     DuckDB.append(appender.techs, stor.cost_capital_power / powerunits_MW)
-    DuckDB.append(appender.techs, stor.cost_capital_energy / powerunits_MW)
+    DuckDB.append(appender.techs, nothing) # Energy costs are in power costs
     DuckDB.end_row(appender.techs)
 
     DuckDB.append(appender.sites, "")

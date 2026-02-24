@@ -35,10 +35,8 @@ struct StorageCandidateParams
     roundtrip_efficiency::Float64
 
     cost_capital_power::Float64 # annualized $/MW
-    cost_capital_energy::Float64 # annualized $/MWh
 
     power_max::Float64 # MW
-    energy_max::Float64 # MWh
-    # could do a duration_max too?
+    duration::Float64 # h
 
 end

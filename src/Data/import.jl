@@ -455,7 +455,7 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
         ["region", "tech", "category",
          "cost_operation", "roundtrip_efficiency",
          "cost_capital_power", "cost_capital_energy",
-         "power_max", "energy_max"],
+         "power_max", "energy_max", "duration"],
         techspath)
 
     for r in 2:size(techs, 1)
@@ -472,11 +472,13 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
         cost_capital_energy = Float64(techs[r, 7]) * powerunits_MW
         power_max = Float64(techs[r, 8]) / powerunits_MW
         energy_max = Float64(techs[r, 9]) / powerunits_MW
+        duration = Float64(techs[r, 10])
+
+        cost_capital_power += duration * cost_capital_energy
 
         tech = StorageCandidateParams(
             techname, category, cost_operation, roundtrip_efficiency,
-            cost_capital_power, cost_capital_energy,
-            power_max, energy_max)
+            cost_capital_power, power_max, duration)
 
         _, region = getbyname(system.regions, regionname)
         push!(region.storagetechs_candidate, tech)
