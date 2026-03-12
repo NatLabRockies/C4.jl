@@ -57,9 +57,10 @@ mutable struct ExpansionProblem
     function ExpansionProblem(
         system::SystemParams,
         riskparams::RiskEstimateParams,
-        eue_max::Vector{Float64}, # in powerunits_MWh
+        eue_max::Union{Vector{Float64},Matrix{Float64}}, # in powerunits_MWh
         optimizer,
-        seasonal_constraints::Bool=false)
+        seasonal_constraints::Bool,
+        initial_chronology)
 
         n_timesteps = length(system.timesteps)
         n_regions = length(system.regions)
@@ -67,8 +68,15 @@ mutable struct ExpansionProblem
         timestepcount(riskparams.times) == n_timesteps ||
             error("Time period assignment is incompatible with system timesteps")
 
-        length(eue_max) == n_regions ||
-            error("Mismatch between EUE constraint count and system regions")
+        if seasonal_constraints
+            size(eue_max, 1) == n_regions ||
+                error("Mismatch between seasonal EUE constraint region count and system regions")
+            size(eue_max, 2) == length(initial_chronology.periods) ||
+                error("Mismatch between seasonal EUE constraint period count and chronology periods")
+        else
+            length(eue_max) == n_regions ||
+                error("Mismatch between EUE constraint count and system regions")
+        end
 
         m = JuMP.direct_model(optimizer)
 
@@ -83,7 +91,7 @@ mutable struct ExpansionProblem
             ReliabilityDispatch, m, builds, riskparams.times)
 
         reliabilityconstraints = ReliabilityConstraints(
-            m, builds, reliabilitydispatch.dispatches, riskparams, eue_max, seasonal_constraints)
+            m, builds, reliabilitydispatch.dispatches, riskparams, eue_max, seasonal_constraints, initial_chronology)
 
         opex_scalar = 8766 / n_timesteps
 

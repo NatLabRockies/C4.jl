@@ -24,16 +24,31 @@ function iterate_ra_cem(
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
-    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN)
+    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN,
+    seasonal_constraints::Bool=false)
 
+    _chronology = deepcopy(base_chronology)
     persist = length(outfile) > 0
     max_neue = maximum(max_neues)
     timeout += time()
 
-    neue_factors = [sum(region.demand) * 1e-6 for region in sys.regions]
-    max_eues = max_neues .* neue_factors
+    annual_demands = [sum(region.demand) for region in sys.regions]
+    annual_eue_factors = annual_demands .* 1e-6
+    max_eues = max_neues .* annual_eue_factors
 
     n_regions = length(sys.regions)
+    n_periods = length(base_chronology.periods)
+    max_eues_by_period = zeros(n_regions, n_periods)
+
+    for p in 1:n_periods
+        represented_ts = represented_timeslices(base_chronology, p)
+
+        for r in 1:n_regions
+            period_demand = sum(sum(sys.regions[r].demand[ts]) for ts in represented_ts)
+            demand_share = annual_demands[r] > 0 ? period_demand / annual_demands[r] : 0.0
+            max_eues_by_period[r, p] = max_eues[r] * demand_share
+        end
+    end
 
     ram_start = now()
     ram = AdequacyProblem(sys, samples=nsamples)
@@ -77,8 +92,9 @@ function iterate_ra_cem(
 
         n_iters += 1
         cem_start = now()
-
-        cem = ExpansionProblem(sys, eue_estimator, max_eues, optimizer)
+        
+        eue_limits = seasonal_constraints ? max_eues_by_period : max_eues
+        cem = ExpansionProblem(sys, eue_estimator, eue_limits, optimizer, seasonal_constraints, _chronology)
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
         println("Recurrences:")

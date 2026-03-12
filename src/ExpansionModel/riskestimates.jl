@@ -95,7 +95,7 @@ struct ReliabilityConstraints
 
     function ReliabilityConstraints(
         m::JuMP.Model, system::System, dispatches::Vector{<:ReliabilityDispatch},
-        riskparams::RiskEstimateParams, eue_max::Vector{Float64}, seasonalconstraints::Bool)
+        riskparams::RiskEstimateParams, eue_max::Union{Vector{Float64},Matrix{Float64}}, seasonalconstraints::Bool, initial_chronology)
 
         n_regions = length(system.regions)
 
@@ -106,13 +106,27 @@ struct ReliabilityConstraints
 
         if seasonalconstraints
             @info "Adding seasonal constraints to ReliabilityConstraints"
-            n_periods = length(riskparams.periods)
+            n_periods = length(initial_chronology.periods)
+            println("Number of periods: $n_periods, number of regions: $n_regions")
             region_eue = Vector{JuMP_ExpressionRef}(undef, 0)
             region_eue_max = Vector{JuMP_LessThanConstraintRef}(undef, 0)
 
+            period_map = [
+                begin
+                    first_ts = first(dispatch.period.timesteps)
+                    day_idx = Int(cld(first_ts, initial_chronology.daylength))
+                    initial_chronology.days[day_idx]
+                end
+                for dispatch in dispatches
+            ]
+            
             for p in 1:n_periods, r in 1:n_regions
-                expr = @expression(m, sum(eue_estimates[p].eue[r, :]))
-                constraint = @constraint(m, expr <= eue_max[r])
+                mapped_periods = findall(isequal(p), period_map)
+                expr = @expression(
+                    m,
+                    sum(sum(eue_estimates[p_mapped].eue[r, :]) for p_mapped in mapped_periods)
+                )
+                constraint = @constraint(m, expr <= eue_max[r, p])
                 push!(region_eue, expr)
                 push!(region_eue_max, constraint)
             end
@@ -122,7 +136,7 @@ struct ReliabilityConstraints
                         sum(sum(estimate.eue[r, :]) for estimate in eue_estimates))
             
             region_eue_max = @constraint(m, [r in 1:n_regions],
-                             region_eue[r, p] <= eue_max[r])
+                             region_eue[r] <= eue_max[r])
         end
         new(eue_estimates, region_eue, region_eue_max)
     end
