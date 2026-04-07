@@ -20,7 +20,7 @@ export iterate_ra_cem
 
 function iterate_ra_cem(
     sys::SystemParams, base_chronology::TimeProxyAssignment,
-    max_neues::Vector{Float64}, optimizer;
+    max_neues::Union{Vector{Float64},Matrix{Float64}}, optimizer;
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
@@ -46,7 +46,7 @@ function iterate_ra_cem(
         for r in 1:n_regions
             period_demand = sum(sum(sys.regions[r].demand[ts]) for ts in represented_ts)
             demand_share = annual_demands[r] > 0 ? period_demand / annual_demands[r] : 0.0
-            max_eues_by_period[r, p] = max_eues[r] * demand_share
+            max_eues_by_period[r, p] = max_eues[r,p] * demand_share
         end
     end
 
