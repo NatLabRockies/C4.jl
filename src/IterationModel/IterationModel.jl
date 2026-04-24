@@ -6,7 +6,9 @@ using C4.DispatchModel
 using C4.ExpansionModel
 
 import ..store, ..powerunits_MW
-import C4.ExpansionModel: EUECuttingPlaneParams, EUECuttingPlaneRegionParams
+import C4.ExpansionModel: EUECuttingPlaneParams, EUECuttingPlaneRegionParams,
+                          CVaRCuttingPlaneParams, CVaRCuttingPlaneRegionParams,
+                          nullestimator, nullcvar_estimator
 
 import Dates: Date, now
 import DBInterface
@@ -14,6 +16,7 @@ import DelimitedFiles: writedlm
 import DuckDB
 import JuMP: value
 import PRASCore: EUE, NEUE, val
+import Statistics: mean, quantile
 
 export iterate_ra_cem
 
@@ -23,15 +26,27 @@ function iterate_ra_cem(
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
-    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN)
+    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN,
+    risk_metric::Symbol=:eue, cvar_alpha::Float64=0.95,
+    max_ncvar::Union{Nothing,Float64}=nothing)
 
     persist = length(outfile) > 0
     timeout += time()
 
     neue_factor = sum(sum(region.demand) for region in sys.regions) * 1e-6
     max_eue = max_neue * neue_factor
+    max_cvar = isnothing(max_ncvar) ? nothing : max_ncvar * neue_factor
 
-    n_regions = length(sys.regions)
+    risk_metric in (:eue, :cvar) ||
+        error("Unsupported risk metric $(risk_metric). Use :eue or :cvar")
+
+    risk_cap = if risk_metric == :cvar
+        isnothing(max_cvar) &&
+            error("CVaR runs require an explicit max_ncvar target; no implicit reuse of max_neue is allowed")
+        max_cvar
+    else
+        max_eue
+    end
 
     ram_start = now()
     ram = AdequacyProblem(sys, samples=nsamples)
@@ -67,7 +82,11 @@ function iterate_ra_cem(
     sys_built = nothing
     cem = nothing
     prev_cem = nothing
-    eue_estimator = EUECuttingPlaneParams[]
+    risk_estimator = if risk_metric == :cvar
+        nullcvar_estimator()
+    else
+        nullestimator()
+    end
     n_iters = 0
 
     while (time() < timeout)
@@ -75,7 +94,7 @@ function iterate_ra_cem(
         n_iters += 1
         cem_start = now()
 
-        cem = ExpansionProblem(sys, chronology, eue_estimator, max_eue, optimizer)
+        cem = ExpansionProblem(sys, chronology, risk_estimator, risk_cap, optimizer)
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
         println("Recurrences:")
@@ -94,7 +113,12 @@ function iterate_ra_cem(
 
         show_neues(ram_result)
 
-        is_adequate = neue(ram_result) <= max_neue
+        risk_value = if risk_metric == :cvar
+            system_cvar(ram_result, cvar_alpha)
+        else
+            val(EUE(ram_result.shortfalls)) / powerunits_MW
+        end
+        is_adequate = risk_value <= risk_cap
 
         aug_start = now()
 
@@ -105,7 +129,11 @@ function iterate_ra_cem(
         end
 
         if endog_risk
-            push!(eue_estimator, EUECuttingPlaneParams(cem, ram_result))
+            if risk_metric == :cvar
+                push!(risk_estimator, CVaRCuttingPlaneParams(cem, ram_result, alpha=cvar_alpha))
+            else
+                push!(risk_estimator, EUECuttingPlaneParams(cem, ram_result))
+            end
         end
 
         aug_end = now()
@@ -214,6 +242,51 @@ function EUECuttingPlaneParams(cem::ExpansionProblem, adequacy::AdequacyResult)
                for (r, builds) in enumerate(cem.builds.regions)]
 
     return EUECuttingPlaneParams(base_eue, regions)
+
+end
+
+function CVaRCuttingPlaneParams(
+    cem::ExpansionProblem,
+    adequacy::AdequacyResult;
+    alpha::Float64=0.95)
+
+    tail_shortfall_samples =
+        dropdims(sum(adequacy.shortfallsamples.shortfall, dims=1), dims=1) ./ powerunits_MW
+    total_shortfall_samples = vec(sum(tail_shortfall_samples, dims=1))
+    tail = cvar_tail_mask(total_shortfall_samples, alpha)
+    stor_dCVaRs = tail_storage_marginals(adequacy.marginal_storage_samples, tail)
+    base_cvar = tail_masked_mean(total_shortfall_samples, tail)
+
+    regions = [CVaRCuttingPlaneRegionParams(builds, r, adequacy, tail_shortfall_samples, tail, stor_dCVaRs)
+               for (r, builds) in enumerate(cem.builds.regions)]
+
+    return CVaRCuttingPlaneParams(base_cvar, alpha, regions)
+
+end
+
+function system_cvar(adequacy::AdequacyResult, alpha::Float64)
+    samples = vec(sum(adequacy.shortfallsamples.shortfall, dims=(1, 2))) ./ powerunits_MW
+    tail = cvar_tail_mask(samples, alpha)
+    return tail_masked_mean(samples, tail)
+end
+
+function cvar_tail_mask(samples::AbstractVector{<:Real}, alpha::Float64)
+    isempty(samples) && return falses(0)
+    var_alpha = quantile(samples, alpha)
+    return samples .>= var_alpha
+end
+
+function tail_masked_mean(
+    values::AbstractVector{<:Real},
+    mask::AbstractVector{Bool})
+
+    isempty(values) && return 0.0
+    @assert length(values) == length(mask)
+
+    tail_values = values[mask]
+    isempty(tail_values) && return 0.0
+
+    return mean(tail_values)
 
 end
 

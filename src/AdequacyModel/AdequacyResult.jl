@@ -1,7 +1,9 @@
 struct AdequacyResult
 
     shortfalls::PRASCore.Results.ShortfallResult
+    shortfallsamples::PRASCore.Results.ShortfallSamplesResult
     marginal_eue::MarginalEUEResult
+    marginal_storage_samples::MarginalStorageSamplesResult
     # TODO: Save transmission EUE gradient data here
 
 end
@@ -25,8 +27,10 @@ region_neues(result::AdequacyResult) =
 function solve(prob::AdequacyProblem)
 
     simspec = SequentialMonteCarlo(samples=prob.samples, seed=1, threaded=false)
-    sf, dEUE = assess(prob.prassys, simspec, Shortfall(), MarginalEUE())
+    sf, sfs, dEUE, dEUEsamples = assess(
+        prob.prassys, simspec,
+        Shortfall(), ShortfallSamples(), MarginalEUE(), MarginalStorageSamples())
 
-    return AdequacyResult(sf, dEUE)
+    return AdequacyResult(sf, sfs, dEUE, dEUEsamples)
 
 end
