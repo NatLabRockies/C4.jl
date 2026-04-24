@@ -6,6 +6,7 @@ using TimeZones
 
 import PRASCore
 import PRASCore: SystemModel, assess, SequentialMonteCarlo, Shortfall,
+                 ShortfallSamples,
                  NEUE, EUE, LOLE, val, stderror, MW, MWh
 
 using ..Data
@@ -13,7 +14,7 @@ import ..powerunits_MW, ..ThermalTechnology, ..Region,
        ..maxpower, ..maxenergy
 
 export AdequacyProblem, AdequacyResult, solve, neue, show_neues, region_neues,
-       StorMarginalEUE
+       StorMarginalEUE, tail_storage_marginals
 
 include("MarginalEUE.jl")
 include("AdequacyProblem.jl")

@@ -34,7 +34,8 @@ include("build.jl")
 include("riskestimates.jl")
 
 export ExpansionProblem, EUECuttingPlaneParams, warmstart_builds!, solve!,
-       capex, opex, cost, lcoe, nullestimator
+    CVaRCuttingPlaneParams,
+    capex, opex, cost, lcoe, nullestimator, nullcvar_estimator
 
 # TODO: Simplify this now that it doesn't need to be abstracted
 const ExpansionEconomicDispatch =
@@ -50,13 +51,13 @@ mutable struct ExpansionProblem
 
     economicdispatch::ExpansionEconomicDispatch
 
-    reliabilityconstraints::ReliabilityConstraints
+    reliabilityconstraints::AbstractReliabilityConstraints
 
     function ExpansionProblem(
         system::SystemParams,
         chronology::TimeProxyAssignment,
-        riskparams::Vector{EUECuttingPlaneParams},
-        eue_max::Float64, # in powerunits_MWh
+        riskparams::Union{Vector{EUECuttingPlaneParams},Vector{CVaRCuttingPlaneParams}},
+        maxrisk::Float64, # in powerunits_MWh
         optimizer)
 
         n_timesteps = length(system.timesteps)
@@ -74,8 +75,8 @@ mutable struct ExpansionProblem
         economicdispatch = DispatchSequence(
             EconomicDispatch, m, builds, chronology)
 
-        reliabilityconstraints = ReliabilityConstraints(
-            m, builds, riskparams, eue_max)
+        reliabilityconstraints = build_reliability_constraints(
+            m, builds, riskparams, maxrisk)
 
         opex_scalar = 8766 / n_timesteps
 
@@ -86,6 +87,20 @@ mutable struct ExpansionProblem
     end
 
 end
+
+build_reliability_constraints(
+    m::JuMP.Model,
+    builds::SystemExpansion,
+    riskparams::Vector{EUECuttingPlaneParams},
+    maxrisk::Float64) =
+    ReliabilityConstraints(m, builds, riskparams, maxrisk)
+
+build_reliability_constraints(
+    m::JuMP.Model,
+    builds::SystemExpansion,
+    riskparams::Vector{CVaRCuttingPlaneParams},
+    maxrisk::Float64) =
+    CVaRReliabilityConstraints(m, builds, riskparams, maxrisk)
 
 function solve!(prob::ExpansionProblem)
 
