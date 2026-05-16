@@ -3,11 +3,11 @@ struct ThermalEUEReduction
     nameplate::Float64
     dEUE::Float64
 
-    function ThermalEUEReduction(build::ThermalExpansion, lolps::Vector{Float64})
+    function ThermalEUEReduction(build::ThermalExpansion, gen_dEUEs::Vector{Float64})
 
-        T = length(lolps)
+        T = length(gen_dEUEs)
         nameplate = value(nameplatecapacity(build))
-        dEUE = -sum(lolps[t] * availability(build.params, t) for t in 1:T)
+        dEUE = -sum(gen_dEUEs[t] * availability(build.params, t) for t in 1:T)
 
         return new(nameplate, dEUE)
 
@@ -23,11 +23,11 @@ struct VariableSiteEUEReduction
     dEUE::Float64
 
     function VariableSiteEUEReduction(
-        build::VariableSiteExpansion, lolps::Vector{Float64})
+        build::VariableSiteExpansion, gen_dEUEs::Vector{Float64})
 
-        T = length(lolps)
+        T = length(gen_dEUEs)
         nameplate = value(nameplatecapacity(build))
-        dEUE = -sum(lolps[t] * availability(build, t) for t in 1:T)
+        dEUE = -sum(gen_dEUEs[t] * availability(build, t) for t in 1:T)
 
         return new(nameplate, dEUE)
 
@@ -42,9 +42,9 @@ struct VariableEUEReduction
 
     sites::Vector{VariableSiteEUEReduction}
 
-    function VariableEUEReduction(build::VariableExpansion, lolps::Vector{Float64})
+    function VariableEUEReduction(build::VariableExpansion, gen_dEUEs::Vector{Float64})
 
-        sites = [VariableSiteEUEReduction(site, lolps) for site in build.sites]
+        sites = [VariableSiteEUEReduction(site, gen_dEUEs) for site in build.sites]
 
         return new(sites)
 
@@ -64,14 +64,12 @@ struct StorageEUEReduction
     nameplate_energy::Float64
     dEUE_energy::Float64
 
-    function StorageEUEReduction(build::StorageExpansion, stor_dEUEs::StorMarginalEUE)
+    function StorageEUEReduction(
+        build::StorageExpansion, power_dEUE::Float64, energy_dEUE::Float64)
 
         return new(
-            value(maxpower(build)),
-            stor_dEUEs.charge + stor_dEUEs.discharge,
-            value(maxenergy(build)),
-            stor_dEUEs.energy
-        )
+            value(maxpower(build)), -power_dEUE,
+            value(maxenergy(build)), -energy_dEUE)
 
     end
 
@@ -82,25 +80,24 @@ eue_adjustment(riskparams::StorageEUEReduction, build::StorageExpansion) =
         riskparams.dEUE_energy * (build.energy_new - riskparams.nameplate_energy)
 
 struct EUECuttingPlaneRegionParams
+
     thermaltechs::Vector{ThermalEUEReduction}
     variabletechs::Vector{VariableEUEReduction}
     storagetechs::Vector{StorageEUEReduction}
 
     function EUECuttingPlaneRegionParams(builds::RegionExpansion, r::Int, adequacy::AdequacyResult)
 
-        stor_dEUEs = adequacy.marginal_eue.storages
-
-        stor_idxs = adequacy.marginal_eue.region_stor_idxs[r]
-        lolps = adequacy.shortfalls.eventperiod_period_mean
-
-        thermaltechs = [ThermalEUEReduction(build, lolps)
+        thermaltechs = [ThermalEUEReduction(build, adequacy.generation_dEUEs)
                         for build in builds.thermaltechs]
 
-        variabletechs = [VariableEUEReduction(build, lolps)
+        variabletechs = [VariableEUEReduction(build, adequacy.generation_dEUEs)
                         for build in builds.variabletechs]
 
-        storagetechs = [StorageEUEReduction(build, stor_dEUEs[s])
-                        for (s, build) in zip(stor_idxs, builds.storagetechs)]
+        storagetechs = [StorageEUEReduction(build, power_dEUE, energy_dEUE)
+                        for (build, power_dEUE, energy_dEUE) in
+                            zip(builds.storagetechs,
+                                adequacy.storage_power_dEUEs,
+                                adequacy.storage_energy_dEUEs)]
 
         return new(thermaltechs, variabletechs, storagetechs)
 
@@ -134,7 +131,6 @@ struct EUECuttingPlaneParams
 
     base_eue::Float64
     regions::Vector{EUECuttingPlaneRegionParams}
-    # TODO: Also collect / use transmission EUE impacts
 
 end
 

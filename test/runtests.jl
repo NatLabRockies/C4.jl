@@ -15,6 +15,7 @@ import HiGHS
 import JuMP: optimizer_with_attributes, value, termination_status, write_to_file
 
 include("DispatchModel/sequencing.jl")
+include("AdequacySimulation.jl")
 
 optimizer = optimizer_with_attributes(
     HiGHS.Optimizer,
@@ -40,12 +41,13 @@ voll = 9000.
 max_eue = sum(sum(region.demand) for region in sys.regions) / 10_000 # 100 ppm
 
 # For iterate_ra_cem, which takes NEUE
-max_neue = 100.
+max_neue = 10.
 
 ram = AdequacyProblem(sys, samples=1000)
 ram_results = solve(ram)
-println("\nBase reliability:")
-show_neues(ram_results)
+println("\nBase NEUE = ", neue(ram_results))
+println("LOLPs: ", ram_results.lolps)
+println("EUEs: ", ram_results.eues)
 
 # Formulate and solve a one-off CEM without risk curves
 
@@ -60,8 +62,10 @@ display(sys_built)
 println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, samples=1000)
-ram_results = solve(ram)
-show_neues(ram_results)
+ram_results = solve(ram) # Dig into these results
+println("\nNEUE = ", neue(ram_results))
+println("LOLPs: ", ram_results.lolps)
+println("EUEs: ", ram_results.eues)
 
 eue_params = [EUECuttingPlaneParams(cem, ram_results)]
 
@@ -75,7 +79,9 @@ println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, samples=1000)
 ram_results = solve(ram)
-show_neues(ram_results)
+println("\nNEUE = ", neue(ram_results))
+println("LOLPs: ", ram_results.lolps)
+println("EUEs: ", ram_results.eues)
 
 push!(eue_params, EUECuttingPlaneParams(cem, ram_results))
 
@@ -89,15 +95,20 @@ println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, samples=1000)
 ram_results = solve(ram)
-show_neues(ram_results)
+println("\nNEUE = ", neue(ram_results))
+println("LOLPs: ", ram_results.lolps)
+println("EUEs: ", ram_results.eues)
 
 println("\nSingle-region Iterative CEM:")
 cem, ram, pcm = iterate_ra_cem(
     sys, repeatedchrono, max_neue, optimizer,
-    outfile=timestamp * ".db", check_dispatch=false, check_dispatch_voll=voll)
+    nsamples=100_000, check_dispatch=false, check_dispatch_voll=voll,
+    outfile=timestamp * ".db")
 
 sys_built = SystemParams(cem)
 display(sys_built)
+println("LOLPs: ", ram.lolps)
+println("EUEs: ", ram.eues)
 
 println("Capex: ", value(capex(cem)))
 println("Opex: ", value(opex(cem)))

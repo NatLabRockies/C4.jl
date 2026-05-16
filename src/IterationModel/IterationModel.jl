@@ -13,13 +13,12 @@ import DBInterface
 import DelimitedFiles: writedlm
 import DuckDB
 import JuMP: value
-import PRASCore: EUE, NEUE, val
 
 export iterate_ra_cem
 
 function iterate_ra_cem(
     sys::SystemParams, base_chronology::TimeProxyAssignment,
-    max_neue::Float64, optimizer;
+    max_neue::Float64, optimizer; neue_tol::Float64=.01,
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
@@ -38,7 +37,14 @@ function iterate_ra_cem(
     ram_result = solve(ram)
     ram_end = now()
 
-    show_neues(ram_result)
+    println("NEUE: ", neue(ram_result))
+    println("LOLE: ", sum(ram_result.lolps))
+    # println("LOLPs: ", ram_result.lolps)
+    # println("EUEs: ", ram_result.eues)
+    # println("Generation dEUE: ", ram_result.generation_dEUEs)
+    # println("Storage Power dEUE: ", ram_result.storage_power_dEUEs)
+    # println("Storage Energy dEUE: ", ram_result.storage_energy_dEUEs)
+    #show_neues(ram_result)
 
     aug_start = now()
 
@@ -67,6 +73,7 @@ function iterate_ra_cem(
     sys_built = nothing
     cem = nothing
     prev_cem = nothing
+    # Shouldn't we use initial RA results here? Right now they're only used for ASPP
     eue_estimator = EUECuttingPlaneParams[]
     n_iters = 0
 
@@ -78,10 +85,10 @@ function iterate_ra_cem(
         cem = ExpansionProblem(sys, chronology, eue_estimator, max_eue, optimizer)
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
-        println("Recurrences:")
-        for recc in cem.economicdispatch.recurrences
-            println(recc.repetitions, " x ", recc.dispatch.period.name)
-        end
+        # println("Recurrences:")
+        # for recc in cem.economicdispatch.recurrences
+        #     println(recc.repetitions, " x ", recc.dispatch.period.name)
+        # end
 
         solve!(cem)
         cem_end = now()
@@ -92,9 +99,15 @@ function iterate_ra_cem(
         ram_result = solve(ram)
         ram_end = now()
 
-        show_neues(ram_result)
+        println("NEUE: ", neue(ram_result))
+        println("LOLE: ", sum(ram_result.lolps))
+        # println("LOLPs: ", ram_result.lolps)
+        # println("EUEs: ", ram_result.eues)
+        # println("Generation dEUE: ", ram_result.generation_dEUEs)
+        # println("Storage Power dEUE: ", ram_result.storage_power_dEUEs)
+        # println("Storage Energy dEUE: ", ram_result.storage_energy_dEUEs)
 
-        is_adequate = neue(ram_result) <= max_neue
+        is_adequate = neue(ram_result) <= max_neue * (1 + neue_tol)
 
         aug_start = now()
 
@@ -153,7 +166,7 @@ function iterate_ra_cem(
 
     end
 
-    return cem, ram, pcm
+    return cem, ram_result, pcm
 
 end
 
@@ -162,8 +175,9 @@ function add_stressperiod(
     skip_existing::Bool=false
 )
 
-    eues = sum(adequacy.shortfalls.shortfall_mean, dims=1)
-    days = reshape(eues, times.daylength, :)
+    # TODO: Could use gen_dEUEs now instead of EUE? Would capture storage
+    #       charging opportunities
+    days = reshape(adequacy.eues, times.daylength, :)
     days = vec(sum(days, dims=1))
     og_new_day = argmax(days)
 
@@ -208,7 +222,7 @@ end
 
 function EUECuttingPlaneParams(cem::ExpansionProblem, adequacy::AdequacyResult)
 
-    base_eue = val(EUE(adequacy.shortfalls)) / powerunits_MW
+    base_eue = sum(adequacy.eues) / powerunits_MW
 
     regions = [EUECuttingPlaneRegionParams(builds, r, adequacy)
                for (r, builds) in enumerate(cem.builds.regions)]
