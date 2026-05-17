@@ -1,4 +1,4 @@
-function SystemParams(datadir::String, outages_type::String)
+function SystemParams(datadir::String, outages_type::String="static")
 
     name = basename(datadir)
 
