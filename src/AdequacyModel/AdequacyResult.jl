@@ -18,9 +18,9 @@ region_neues(result::AdequacyResult) =
     [val(NEUE(result.shortfalls, region))
      for region in result.shortfalls.regions.names]
 
-function solve(prob::AdequacyProblem)
+function solve(prob::AdequacyProblem; verbose::Bool=false)
 
-    simspec = SequentialMonteCarlo(samples=prob.samples, seed=1, verbose=false)
+    simspec = SequentialMonteCarlo(samples=prob.samples, seed=1, verbose=verbose)
     sf, = assess(prob.prassys, simspec, Shortfall())
 
     return AdequacyResult(sf)

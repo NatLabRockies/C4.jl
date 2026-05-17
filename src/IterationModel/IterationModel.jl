@@ -24,7 +24,8 @@ function iterate_ra_cem(
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
-    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN)
+    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN,
+    verbose::Bool=false)
 
     persist = length(outfile) > 0
     max_neue = maximum(max_neues)
@@ -37,7 +38,7 @@ function iterate_ra_cem(
 
     ram_start = now()
     ram = AdequacyProblem(sys, samples=nsamples)
-    ram_result = solve(ram)
+    ram_result = solve(ram, verbose=verbose)
     ram_end = now()
 
     show_neues(ram_result)
@@ -92,7 +93,7 @@ function iterate_ra_cem(
         ram_start = now()
         sys_built = SystemParams(cem)
         ram = AdequacyProblem(sys_built, samples=nsamples)
-        ram_result = solve(ram)
+        ram_result = solve(ram, verbose=verbose)
         push!(adequacy_results, ExpansionAdequacyContext(cem, ram_result))
         ram_end = now()
 
