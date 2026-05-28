@@ -1,6 +1,7 @@
 struct AdequacyResult
 
     shortfalls::PRAS.PRASCore.Results.ShortfallResult
+    shortfallsamples::PRAS.PRASCore.Results.ShortfallSamplesResult
 
 end
 
@@ -21,8 +22,8 @@ region_neues(result::AdequacyResult) =
 function solve(prob::AdequacyProblem)
 
     simspec = SequentialMonteCarlo(samples=prob.samples, seed=1)
-    sf, = assess(prob.prassys, simspec, Shortfall())
+    sf, sfs = assess(prob.prassys, simspec, Shortfall(), ShortfallSamples())
 
-    return AdequacyResult(sf)
+    return AdequacyResult(sf, sfs)
 
 end

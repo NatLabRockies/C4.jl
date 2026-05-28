@@ -33,7 +33,9 @@ include("build.jl")
 include("riskestimates.jl")
 
 export ExpansionProblem, ExpansionAdequacyContext, warmstart_builds!, solve!,
-       capex, opex, cost, lcoe, nullestimator
+    capex, opex, cost, lcoe, nullestimator,
+    CVaRRiskEstimatePlaneParams, CVaRRiskEstimatePeriodParams,
+    CVaRRiskEstimateParams, cvar_estimate, nullcvar_estimator
 
 const ExpansionEconomicDispatch =
     DispatchSequence{EconomicDispatch{SystemExpansion,RegionExpansion,InterfaceExpansion}}
@@ -52,11 +54,11 @@ mutable struct ExpansionProblem
     economicdispatch::ExpansionEconomicDispatch
 
     reliabilitydispatch::ExpansionReliabilityDispatch
-    reliabilityconstraints::ReliabilityConstraints
+    reliabilityconstraints::AbstractReliabilityConstraints
 
     function ExpansionProblem(
         system::SystemParams,
-        riskparams::RiskEstimateParams,
+        riskparams::Union{RiskEstimateParams,CVaRRiskEstimateParams},
         eue_max::Vector{Float64}, # in powerunits_MWh
         optimizer)
 
@@ -81,7 +83,7 @@ mutable struct ExpansionProblem
         reliabilitydispatch = DispatchSequence(
             ReliabilityDispatch, m, builds, riskparams.times)
 
-        reliabilityconstraints = ReliabilityConstraints(
+        reliabilityconstraints = build_reliability_constraints(
             m, builds, reliabilitydispatch.dispatches, riskparams, eue_max)
 
         opex_scalar = 8766 / n_timesteps
@@ -94,6 +96,22 @@ mutable struct ExpansionProblem
     end
 
 end
+
+build_reliability_constraints(
+    m::JuMP.Model,
+    system::System,
+    dispatches::Vector{<:ReliabilityDispatch},
+    riskparams::RiskEstimateParams,
+    maxrisk::Vector{Float64}) =
+    ReliabilityConstraints(m, system, dispatches, riskparams, maxrisk)
+
+build_reliability_constraints(
+    m::JuMP.Model,
+    system::System,
+    dispatches::Vector{<:ReliabilityDispatch},
+    riskparams::CVaRRiskEstimateParams,
+    maxrisk::Vector{Float64}) =
+    CVaRReliabilityConstraints(m, system, dispatches, riskparams, maxrisk)
 
 function solve!(prob::ExpansionProblem)
 

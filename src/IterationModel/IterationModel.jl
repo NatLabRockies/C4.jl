@@ -7,7 +7,10 @@ using C4.ExpansionModel
 
 import ..store, ..powerunits_MW
 import C4.ExpansionModel: RiskEstimateParams, RiskEstimatePeriodParams,
-                          RiskEstimatePlaneParams
+                          RiskEstimatePlaneParams,
+                          CVaRRiskEstimateParams, CVaRRiskEstimatePeriodParams,
+                          CVaRRiskEstimatePlaneParams,
+                          nullcvar_estimator
 
 import Dates: Date, now
 import DBInterface
@@ -15,6 +18,7 @@ import DelimitedFiles: writedlm
 import DuckDB
 import JuMP: value
 import PRAS: EUE, NEUE, val
+import Statistics: mean, quantile
 
 export iterate_ra_cem
 
@@ -24,7 +28,8 @@ function iterate_ra_cem(
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
-    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN)
+    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN,
+    risk_metric::Symbol=:eue, cvar_alpha::Float64=0.95)
 
     persist = length(outfile) > 0
     max_neue = maximum(max_neues)
@@ -34,6 +39,9 @@ function iterate_ra_cem(
     max_eues = max_neues .* neue_factors
 
     n_regions = length(sys.regions)
+
+    risk_metric in (:eue, :cvar) ||
+        error("Unsupported risk metric $(risk_metric). Use :eue or :cvar")
 
     ram_start = now()
     ram = AdequacyProblem(sys, samples=nsamples)
@@ -51,7 +59,11 @@ function iterate_ra_cem(
         base_chronology
     end
 
-    eue_estimator = nullestimator(chronology, n_regions)
+    risk_estimator = if risk_metric == :cvar
+        nullcvar_estimator(chronology, n_regions, alpha=cvar_alpha)
+    else
+        nullestimator(chronology, n_regions)
+    end
 
     aug_end = now()
 
@@ -78,7 +90,7 @@ function iterate_ra_cem(
         n_iters += 1
         cem_start = now()
 
-        cem = ExpansionProblem(sys, eue_estimator, max_eues, optimizer)
+        cem = ExpansionProblem(sys, risk_estimator, max_eues, optimizer)
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
         println("Recurrences:")
@@ -105,10 +117,18 @@ function iterate_ra_cem(
         aspp && (chronology = add_stressperiod(sys, chronology, ram_result,
                                                skip_existing=skip_existing_stress_periods))
 
-        eue_estimator = if endog_risk
-            RiskEstimateParams(chronology, adequacy_results)
+        risk_estimator = if endog_risk
+            if risk_metric == :cvar
+                CVaRRiskEstimateParams(chronology, adequacy_results, alpha=cvar_alpha)
+            else
+                RiskEstimateParams(chronology, adequacy_results)
+            end
         else
-            nullestimator(chronology, n_regions)
+            if risk_metric == :cvar
+                nullcvar_estimator(chronology, n_regions, alpha=cvar_alpha)
+            else
+                nullestimator(chronology, n_regions)
+            end
         end
 
         aug_end = now()
@@ -157,6 +177,95 @@ function iterate_ra_cem(
     end
 
     return cem, ram, pcm
+
+end
+
+function CVaRRiskEstimateParams(
+    time::TimeProxyAssignment,
+    results::Vector{ExpansionAdequacyContext};
+    alpha::Float64=0.95)
+
+    period_params = [
+        CVaRRiskEstimatePeriodParams(results, time, p, alpha=alpha)
+        for p in eachindex(time.periods)
+    ]
+
+    return CVaRRiskEstimateParams(time, period_params, alpha=alpha)
+
+end
+
+function CVaRRiskEstimatePeriodParams(
+    adequacycontexts::Vector{ExpansionAdequacyContext},
+    time::TimeProxyAssignment,
+    p::Int;
+    alpha::Float64=0.95)
+
+    R = size(first(adequacycontexts).available_capacity, 1)
+    T = time.daylength
+    J = length(adequacycontexts)
+
+    representative_ts = time.periods[p].timesteps
+    represented_ts = represented_timeslices(time, p)
+
+    planes = Array{CVaRRiskEstimatePlaneParams,3}(undef, R, T, J)
+
+    for (j, adequacycontext) in enumerate(adequacycontexts)
+
+        shortfallsamples = adequacycontext.adequacy.shortfallsamples
+
+        availablecapacity =
+            adequacycontext.available_capacity[:, representative_ts]
+
+        base_cvar = zeros(R,T)
+        dCVaR = zeros(R,T)
+
+        for t in 1:T
+
+            represented_t = [ts[t] for ts in represented_ts]
+
+            for r in 1:R
+                period_samples = vec(sum(shortfallsamples.shortfall[r, represented_t, :], dims=1)) ./ powerunits_MW
+                tail_mask = cvar_tail_mask(period_samples, alpha)
+
+                base_cvar[r,t] = tail_masked_mean(period_samples, tail_mask)
+
+                shortage_event_counts = vec(sum(shortfallsamples.shortfall[r, represented_t, :] .> 0, dims=1))
+                dCVaR[r,t] = tail_masked_mean(shortage_event_counts, tail_mask)
+            end
+
+        end
+
+        planes[:,:,j] .= CVaRRiskEstimatePlaneParams.(
+            base_cvar, availablecapacity, dCVaR)
+
+    end
+
+    return planes
+
+end
+
+function cvar_tail_mask(samples::AbstractVector{<:Real}, alpha::Float64)
+
+    isempty(samples) && return falses(0)
+
+    var_alpha = quantile(samples, alpha)
+    return samples .>= var_alpha
+
+end
+
+function tail_masked_mean(
+    values::AbstractVector{<:Real},
+    mask::AbstractVector{Bool})
+
+    isempty(values) && return 0.0
+
+    @assert length(values) == length(mask)
+
+    tail_values = values[mask]
+
+    isempty(tail_values) && return 0.0
+
+    return mean(tail_values)
 
 end
 
