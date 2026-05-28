@@ -1,6 +1,6 @@
 name = "C4"
 uuid = "d8a4eb63-673e-45a5-a75e-6535bf5d6c69"
-authors = ["Gord Stephen <gords@uw.edu>"]
+authors = ["Gord Stephen <g.stephen@imperial.ac.uk>"]
 version = "0.1.0"
 
 [deps]
@@ -11,6 +11,10 @@ DuckDB = "d2f5444f-75bc-4fdf-ac35-56f514c445e1"
 IterTools = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
-PRAS = "05348d26-1c52-11e9-35e3-9d51842d34b9"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Random123 = "74087812-796a-5b5d-8853-05524746bad3"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
-TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
+
+[compat]
+Random = "1.11.0"
+Random123 = "1.7.1"

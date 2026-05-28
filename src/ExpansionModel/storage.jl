@@ -47,7 +47,7 @@ function StorageExistingParams(tech::StorageExpansion)
 
     new_power = value(tech.power_new)
     new_energy = value(tech.energy_new)
-    new_duration = new_energy / new_power
+    new_duration = iszero(new_power) ? 0. : new_energy / new_power
 
     params = tech.params
 

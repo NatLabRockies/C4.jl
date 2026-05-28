@@ -19,7 +19,7 @@ struct ThermalDispatch{G<:ThermalTechnology}
         varnames!(dispatch, "tech_dispatch[$(fullname)]", 1:T)
 
         dispatch_max = @constraint(m, [t in 1:T],
-            dispatch[t] <= availablecapacity(tech, ts[t]))
+            dispatch[t] <= nameplatecapacity(tech))
 
         return new{G}(dispatch, dispatch_max, tech)
 

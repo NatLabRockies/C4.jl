@@ -18,7 +18,8 @@ import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
 import ..Data: ThermalExistingParams, ThermalCandidateParams,
                VariableExistingParams, VariableExistingSiteParams,
                VariableCandidateParams, VariableCandidateSiteParams,
-               StorageExistingParams, StorageCandidateParams
+               StorageExistingParams, StorageCandidateParams,
+               SystemParams, RegionParams, InterfaceParams
 
 using ..Data
 using ..AdequacyModel
@@ -32,16 +33,19 @@ include("build.jl")
 
 include("riskestimates.jl")
 
+<<<<<<< HEAD
 export ExpansionProblem, ExpansionAdequacyContext, warmstart_builds!, solve!,
     capex, opex, cost, lcoe, nullestimator,
     CVaRRiskEstimatePlaneParams, CVaRRiskEstimatePeriodParams,
     CVaRRiskEstimateParams, cvar_estimate, nullcvar_estimator
+=======
+export ExpansionProblem, EUECuttingPlaneParams, warmstart_builds!, solve!,
+       capex, opex, cost, lcoe, nullestimator
+>>>>>>> origin/gs/eue_surface_storage
 
+# TODO: Simplify this now that it doesn't need to be abstracted
 const ExpansionEconomicDispatch =
     DispatchSequence{EconomicDispatch{SystemExpansion,RegionExpansion,InterfaceExpansion}}
-
-const ExpansionReliabilityDispatch =
-    DispatchSequence{ReliabilityDispatch{SystemExpansion,RegionExpansion,InterfaceExpansion}}
 
 mutable struct ExpansionProblem
 
@@ -53,6 +57,7 @@ mutable struct ExpansionProblem
 
     economicdispatch::ExpansionEconomicDispatch
 
+<<<<<<< HEAD
     reliabilitydispatch::ExpansionReliabilityDispatch
     reliabilityconstraints::AbstractReliabilityConstraints
 
@@ -60,16 +65,22 @@ mutable struct ExpansionProblem
         system::SystemParams,
         riskparams::Union{RiskEstimateParams,CVaRRiskEstimateParams},
         eue_max::Vector{Float64}, # in powerunits_MWh
+=======
+    reliabilityconstraints::ReliabilityConstraints
+
+    function ExpansionProblem(
+        system::SystemParams,
+        chronology::TimeProxyAssignment,
+        riskparams::Vector{EUECuttingPlaneParams},
+        eue_max::Float64, # in powerunits_MWh
+>>>>>>> origin/gs/eue_surface_storage
         optimizer)
 
         n_timesteps = length(system.timesteps)
         n_regions = length(system.regions)
 
-        timestepcount(riskparams.times) == n_timesteps ||
+        timestepcount(chronology) == n_timesteps ||
             error("Time period assignment is incompatible with system timesteps")
-
-        length(eue_max) == n_regions ||
-            error("Mismatch between EUE constraint count and system regions")
 
         m = JuMP.direct_model(optimizer)
 
@@ -78,20 +89,21 @@ mutable struct ExpansionProblem
             [InterfaceExpansion(m, i) for i in system.interfaces])
 
         economicdispatch = DispatchSequence(
-            EconomicDispatch, m, builds, riskparams.times)
+            EconomicDispatch, m, builds, chronology)
 
-        reliabilitydispatch = DispatchSequence(
-            ReliabilityDispatch, m, builds, riskparams.times)
-
+<<<<<<< HEAD
         reliabilityconstraints = build_reliability_constraints(
             m, builds, reliabilitydispatch.dispatches, riskparams, eue_max)
+=======
+        reliabilityconstraints = ReliabilityConstraints(
+            m, builds, riskparams, eue_max)
+>>>>>>> origin/gs/eue_surface_storage
 
         opex_scalar = 8766 / n_timesteps
 
         @objective(m, Min, cost(builds) + opex_scalar * cost(economicdispatch))
 
-        return new(m, system, builds, economicdispatch,
-                   reliabilitydispatch, reliabilityconstraints)
+        return new(m, system, builds, economicdispatch, reliabilityconstraints)
 
     end
 
@@ -156,7 +168,6 @@ function warmstart_builds!(prob::ExpansionProblem, prev_prob::ExpansionProblem)
 end
 
 
-include("ExpansionAdequacyContext.jl")
 include("export.jl")
 
 end
