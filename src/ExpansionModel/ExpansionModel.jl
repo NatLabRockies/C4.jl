@@ -33,15 +33,10 @@ include("build.jl")
 
 include("riskestimates.jl")
 
-<<<<<<< HEAD
-export ExpansionProblem, ExpansionAdequacyContext, warmstart_builds!, solve!,
-    capex, opex, cost, lcoe, nullestimator,
-    CVaRRiskEstimatePlaneParams, CVaRRiskEstimatePeriodParams,
-    CVaRRiskEstimateParams, cvar_estimate, nullcvar_estimator
-=======
 export ExpansionProblem, EUECuttingPlaneParams, warmstart_builds!, solve!,
-       capex, opex, cost, lcoe, nullestimator
->>>>>>> origin/gs/eue_surface_storage
+       capex, opex, cost, lcoe,
+       CVaRRiskEstimatePlaneParams, CVaRRiskEstimatePeriodParams,
+       CVaRRiskEstimateParams, cvar_estimate, nullcvar_estimator
 
 # TODO: Simplify this now that it doesn't need to be abstracted
 const ExpansionEconomicDispatch =
@@ -57,15 +52,6 @@ mutable struct ExpansionProblem
 
     economicdispatch::ExpansionEconomicDispatch
 
-<<<<<<< HEAD
-    reliabilitydispatch::ExpansionReliabilityDispatch
-    reliabilityconstraints::AbstractReliabilityConstraints
-
-    function ExpansionProblem(
-        system::SystemParams,
-        riskparams::Union{RiskEstimateParams,CVaRRiskEstimateParams},
-        eue_max::Vector{Float64}, # in powerunits_MWh
-=======
     reliabilityconstraints::ReliabilityConstraints
 
     function ExpansionProblem(
@@ -73,7 +59,6 @@ mutable struct ExpansionProblem
         chronology::TimeProxyAssignment,
         riskparams::Vector{EUECuttingPlaneParams},
         eue_max::Float64, # in powerunits_MWh
->>>>>>> origin/gs/eue_surface_storage
         optimizer)
 
         n_timesteps = length(system.timesteps)
@@ -91,13 +76,8 @@ mutable struct ExpansionProblem
         economicdispatch = DispatchSequence(
             EconomicDispatch, m, builds, chronology)
 
-<<<<<<< HEAD
-        reliabilityconstraints = build_reliability_constraints(
-            m, builds, reliabilitydispatch.dispatches, riskparams, eue_max)
-=======
         reliabilityconstraints = ReliabilityConstraints(
             m, builds, riskparams, eue_max)
->>>>>>> origin/gs/eue_surface_storage
 
         opex_scalar = 8766 / n_timesteps
 
@@ -109,21 +89,9 @@ mutable struct ExpansionProblem
 
 end
 
-build_reliability_constraints(
-    m::JuMP.Model,
-    system::System,
-    dispatches::Vector{<:ReliabilityDispatch},
-    riskparams::RiskEstimateParams,
-    maxrisk::Vector{Float64}) =
-    ReliabilityConstraints(m, system, dispatches, riskparams, maxrisk)
-
-build_reliability_constraints(
-    m::JuMP.Model,
-    system::System,
-    dispatches::Vector{<:ReliabilityDispatch},
-    riskparams::CVaRRiskEstimateParams,
-    maxrisk::Vector{Float64}) =
-    CVaRReliabilityConstraints(m, system, dispatches, riskparams, maxrisk)
+# TODO: CVaRReliabilityConstraints needs to be redesigned to work with the
+# EUECuttingPlaneParams-based ReliabilityConstraints architecture (ReliabilityDispatch
+# was removed in gs/eue_surface_storage). See riskestimates.jl for the CVaR types.
 
 function solve!(prob::ExpansionProblem)
 

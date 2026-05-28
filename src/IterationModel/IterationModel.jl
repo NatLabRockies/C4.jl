@@ -6,26 +6,17 @@ using C4.DispatchModel
 using C4.ExpansionModel
 
 import ..store, ..powerunits_MW
-<<<<<<< HEAD
-import C4.ExpansionModel: RiskEstimateParams, RiskEstimatePeriodParams,
-                          RiskEstimatePlaneParams,
+import C4.ExpansionModel: EUECuttingPlaneParams, EUECuttingPlaneRegionParams,
                           CVaRRiskEstimateParams, CVaRRiskEstimatePeriodParams,
                           CVaRRiskEstimatePlaneParams,
                           nullcvar_estimator
-=======
-import C4.ExpansionModel: EUECuttingPlaneParams, EUECuttingPlaneRegionParams
->>>>>>> origin/gs/eue_surface_storage
 
 import Dates: Date, now
 import DBInterface
 import DelimitedFiles: writedlm
 import DuckDB
 import JuMP: value
-<<<<<<< HEAD
-import PRAS: EUE, NEUE, val
 import Statistics: mean, quantile
-=======
->>>>>>> origin/gs/eue_surface_storage
 
 export iterate_ra_cem
 
@@ -72,14 +63,6 @@ function iterate_ra_cem(
         base_chronology
     end
 
-<<<<<<< HEAD
-    risk_estimator = if risk_metric == :cvar
-        nullcvar_estimator(chronology, n_regions, alpha=cvar_alpha)
-    else
-        nullestimator(chronology, n_regions)
-    end
-=======
->>>>>>> origin/gs/eue_surface_storage
 
     aug_end = now()
 
@@ -107,11 +90,9 @@ function iterate_ra_cem(
         n_iters += 1
         cem_start = now()
 
-<<<<<<< HEAD
-        cem = ExpansionProblem(sys, risk_estimator, max_eues, optimizer)
-=======
+        # TODO: CVaR support - needs a new ExpansionProblem constructor accepting
+        # CVaRReliabilityConstraints (see riskestimates.jl) to replace the EUE cutting planes
         cem = ExpansionProblem(sys, chronology, eue_estimator, max_eue, optimizer)
->>>>>>> origin/gs/eue_surface_storage
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
         # println("Recurrences:")
@@ -146,23 +127,11 @@ function iterate_ra_cem(
                 skip_existing=skip_existing_stress_periods)
         end
 
-<<<<<<< HEAD
-        risk_estimator = if endog_risk
-            if risk_metric == :cvar
-                CVaRRiskEstimateParams(chronology, adequacy_results, alpha=cvar_alpha)
-            else
-                RiskEstimateParams(chronology, adequacy_results)
-            end
-        else
-            if risk_metric == :cvar
-                nullcvar_estimator(chronology, n_regions, alpha=cvar_alpha)
-            else
-                nullestimator(chronology, n_regions)
-            end
-=======
         if endog_risk
             push!(eue_estimator, EUECuttingPlaneParams(cem, ram_result))
->>>>>>> origin/gs/eue_surface_storage
+            # TODO: CVaR cutting plane support - CVaRRiskEstimateParams needs to be
+            # redesigned to work with the EUECuttingPlaneParams architecture.
+            # Previously relied on ExpansionAdequacyContext (removed in gs/eue_surface_storage).
         end
 
         aug_end = now()
@@ -214,69 +183,13 @@ function iterate_ra_cem(
 
 end
 
-function CVaRRiskEstimateParams(
-    time::TimeProxyAssignment,
-    results::Vector{ExpansionAdequacyContext};
-    alpha::Float64=0.95)
-
-    period_params = [
-        CVaRRiskEstimatePeriodParams(results, time, p, alpha=alpha)
-        for p in eachindex(time.periods)
-    ]
-
-    return CVaRRiskEstimateParams(time, period_params, alpha=alpha)
-
-end
-
-function CVaRRiskEstimatePeriodParams(
-    adequacycontexts::Vector{ExpansionAdequacyContext},
-    time::TimeProxyAssignment,
-    p::Int;
-    alpha::Float64=0.95)
-
-    R = size(first(adequacycontexts).available_capacity, 1)
-    T = time.daylength
-    J = length(adequacycontexts)
-
-    representative_ts = time.periods[p].timesteps
-    represented_ts = represented_timeslices(time, p)
-
-    planes = Array{CVaRRiskEstimatePlaneParams,3}(undef, R, T, J)
-
-    for (j, adequacycontext) in enumerate(adequacycontexts)
-
-        shortfallsamples = adequacycontext.adequacy.shortfallsamples
-
-        availablecapacity =
-            adequacycontext.available_capacity[:, representative_ts]
-
-        base_cvar = zeros(R,T)
-        dCVaR = zeros(R,T)
-
-        for t in 1:T
-
-            represented_t = [ts[t] for ts in represented_ts]
-
-            for r in 1:R
-                period_samples = vec(sum(shortfallsamples.shortfall[r, represented_t, :], dims=1)) ./ powerunits_MW
-                tail_mask = cvar_tail_mask(period_samples, alpha)
-
-                base_cvar[r,t] = tail_masked_mean(period_samples, tail_mask)
-
-                shortage_event_counts = vec(sum(shortfallsamples.shortfall[r, represented_t, :] .> 0, dims=1))
-                dCVaR[r,t] = tail_masked_mean(shortage_event_counts, tail_mask)
-            end
-
-        end
-
-        planes[:,:,j] .= CVaRRiskEstimatePlaneParams.(
-            base_cvar, availablecapacity, dCVaR)
-
-    end
-
-    return planes
-
-end
+# TODO: CVaRRiskEstimateParams and CVaRRiskEstimatePeriodParams constructors need
+# to be redesigned for the new architecture. Previously they depended on
+# ExpansionAdequacyContext (removed in gs/eue_surface_storage), which tracked
+# available_capacity per dispatch period alongside the adequacy result.
+# New approach should derive CVaR cutting plane params directly from
+# AdequacyResult (e.g. using per-sample shortfall data) and ExpansionProblem
+# builds, analogous to how EUECuttingPlaneParams(cem, ram_result) works.
 
 function cvar_tail_mask(samples::AbstractVector{<:Real}, alpha::Float64)
 
