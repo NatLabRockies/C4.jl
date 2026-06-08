@@ -8,10 +8,16 @@ struct AdequacyProblem
     function AdequacyProblem(sys::SystemParams; samples::Int)
 
         demand = sys.regions[1].demand .* powerunits_MW
-        generators = load_generators(sys)
+
+        generators_capacity, generators_lambda, generators_mu =
+            load_generators(sys)
+
         storages, storage_perm = load_storages(sys)
 
-        params = AdequacyParams(demand, generators, storages)
+        params = AdequacyParams(
+            demand,
+            generators_capacity, generators_lambda, generators_mu,
+            storages)
 
         return new(sys, params, storage_perm, samples)
 
@@ -25,16 +31,20 @@ function load_generators(sys::SystemParams)
     n_gens, has_variable = count_gens(sys)
     region = first(sys.regions)
 
-    gens = Matrix{GeneratorParams}(undef, n_gens, n_timesteps)
+    generators_capacity = Matrix{Float64}(undef, n_gens, n_timesteps)
+    generators_lambda = Matrix{Float64}(undef, n_timesteps, n_gens)
+    generators_mu = Matrix{Float64}(undef, n_timesteps, n_gens)
+
     g_last = 0
 
     for tech in region.thermaltechs_existing
         for site in tech.sites
             for _ in 1:site.units
                 g_last += 1
-                gens[g_last, :] .= GeneratorParams.(
-                    site.rating .* site.unit_size .* powerunits_MW,
-                    site.λ,  site.μ)
+                generators_capacity[g_last, :] .=
+                    site.rating .* site.unit_size .* powerunits_MW
+                generators_lambda[:, g_last] .= site.λ
+                generators_mu[:, g_last] .= site.μ
             end
         end
     end
@@ -50,11 +60,13 @@ function load_generators(sys::SystemParams)
         end
 
         g_last += 1
-        gens[g_last, :] .= GeneratorParams.(variable_capacity, 0.,  1.)
+        generators_capacity[g_last, :] .= variable_capacity
+        generators_lambda[:, g_last] .= 0.
+        generators_mu[:, g_last] .= 1.
 
     end
 
-    return gens
+    return generators_capacity, generators_lambda, generators_mu
 
 end
 
