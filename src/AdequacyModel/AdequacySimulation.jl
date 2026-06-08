@@ -1,15 +1,9 @@
 import Base.Threads: nthreads, @spawn
 
-import Random: rand, seed!
+import Random: rand, seed!, AbstractRNG
 import Random123: Philox4x
 
 const zero_range = sqrt(eps())
-
-struct GeneratorParams
-    capacity::Float64
-    lambda::Float64
-    mu::Float64
-end
 
 struct StorageParams
     charge_eff::Float64
@@ -26,24 +20,40 @@ struct AdequacyParams
 
     demand::Vector{Float64} # n_timesteps
 
-    generators::Matrix{GeneratorParams} # n_generators x n_timesteps
+    # Note this index ordering is deliberately inconsistent,
+    # for better contiguous memory access
+    generators_capacity::Matrix{Float64} # n_generators x n_timesteps
+    generators_lambda::Matrix{Float64} # n_timesteps x n_generators
+    generators_mu::Matrix{Float64} # n_timesteps x n_generators
 
     # Note: Provided storages MUST be pre-sorted by round-trip efficiency
     storages::Vector{StorageParams} # n_storages
 
     function AdequacyParams(
         demand::Vector{Float64},
-        generators::Matrix{GeneratorParams},
+        generators_capacity::Matrix{Float64},
+        generators_lambda::Matrix{Float64},
+        generators_mu::Matrix{Float64},
         storages::Vector{StorageParams})
 
         n_timesteps = length(demand)
-        n_generators = size(generators, 1)
+        n_generators = size(generators_capacity, 1)
         n_storages = length(storages)
 
-        size(generators, 2) == n_timesteps || error("Inconsistent number of timesteps")
-        # TODO: Verify round-trip efficiency sorting
+        size(generators_capacity, 2) == n_timesteps || error("Inconsistent number of timesteps")
 
-        new(n_timesteps, n_generators, n_storages, demand, generators, storages)
+        size(generators_lambda, 1) == n_timesteps || error("Inconsistent number of timesteps")
+        size(generators_lambda, 2) == n_generators || error("Inconsistent number of generators")
+
+        size(generators_mu, 1) == n_timesteps || error("Inconsistent number of timesteps")
+        size(generators_mu, 2) == n_generators || error("Inconsistent number of generators")
+
+        # This seems prone to floating point error, consider integer options...
+        issorted([stor.charge_eff * stor.discharge_eff for stor in storages], rev=true) ||
+            error("Storages must be provided in order of decreasing round-trip efficiency")
+
+        new(n_timesteps, n_generators, n_storages, demand,
+            generators_capacity, generators_lambda, generators_mu, storages)
 
     end
 
@@ -58,8 +68,8 @@ struct DispatchState
     imbalance::Vector{Float64} # n_timesteps
     shortfalls::Vector{Float64} # n_timesteps - per-sample shortfall scratch
     
-    generator_availability::Vector{Bool} # n_generators
-    
+    generator_nexttransition::Vector{Int} # n_generators
+
     storage_soc::Vector{Float64} # n_storages
     storage_dispatch::Matrix{Float64}  # n_timesteps x n_storages
 
@@ -80,7 +90,7 @@ struct DispatchState
             Vector{Float64}(undef, prob.n_timesteps),
             zeros(prob.n_timesteps),
             
-            Vector{Bool}(undef, prob.n_generators),
+            Vector{Int}(undef, prob.n_generators),
             
             Vector{Float64}(undef, prob.n_storages),
             Matrix{Float64}(undef, prob.n_timesteps, prob.n_storages),
@@ -157,7 +167,7 @@ function solve_single!(
         for t in 1:prob.n_timesteps
             
             if state.imbalance[t] > zero_range
-                shift_energy_forward!(state, prob, t)
+                shift_energy_forward!(state, prob, t) # Majority of simulation time spent here now?
             else
                 drawdown_soc!(state, prob, t)
                 record_primals!(results, state, t)
@@ -244,9 +254,22 @@ function sample_surplus!(state::DispatchState, prob::AdequacyParams, sample_idx:
     # TODO: Update counter predictably based on g (generator name hash?) and t.
     #       For now we just use automatic incrementing
 
-    for (g, gen) in enumerate(prob.generators[:, 1])
-        longrun_availability = gen.mu / (gen.lambda + gen.mu)
-        state.generator_availability[g] = rand(rng) < longrun_availability
+    # Initialize transitions away from starting states
+    for g in 1:prob.n_generators
+
+        lambda = prob.generators_lambda[1, g]
+        mu = prob.generators_mu[1, g]
+
+        if rand(rng) < mu / (lambda + mu) # unit starts available
+            unavailable_probs = view(prob.generators_lambda, :, g)
+            state.generator_nexttransition[g] =
+                randtransitiontime(rng, unavailable_probs, 1, prob.n_timesteps)
+        else # unit starts unavailable
+            available_probs = view(prob.generators_mu, :, g)
+            state.generator_nexttransition[g] =
+                -randtransitiontime(rng, available_probs, 1, prob.n_timesteps)
+        end
+
     end
 
     for t in 1:prob.n_timesteps
@@ -255,16 +278,38 @@ function sample_surplus!(state::DispatchState, prob::AdequacyParams, sample_idx:
 
         for g in 1:prob.n_generators
 
-            gen = prob.generators[g,t]
-            draw = rand(rng)
+            if state.generator_nexttransition[g] > 0 # previously available
 
-            if state.generator_availability[g]
-                (draw < gen.lambda) && (state.generator_availability[g] = false)
-            elseif draw < gen.mu
-                state.generator_availability[g] = true
+                transitioning = t == state.generator_nexttransition[g]
+
+                if transitioning
+
+                    available_probs = view(prob.generators_mu, :, g)
+                    state.generator_nexttransition[g] =
+                        -randtransitiontime(rng, available_probs, t, prob.n_timesteps)
+
+                else
+
+                    surplus += prob.generators_capacity[g,t]
+
+                end
+
+            else # previously unavailable
+
+                transitioning = t == -state.generator_nexttransition[g]
+
+                if transitioning
+
+                    unavailable_probs = view(prob.generators_lambda, :, g)
+                    # 1/3 of init time spent here - why 3x more than above randtransitiontime call?
+                    # Shouldn't they happen equally frequently?
+                     state.generator_nexttransition[g] =
+                        randtransitiontime(rng, unavailable_probs, t, prob.n_timesteps)
+                    surplus += prob.generators_capacity[g,t]
+
+                end
+
             end
-
-            state.generator_availability[g] && (surplus += gen.capacity)
 
         end
 
@@ -275,6 +320,29 @@ function sample_surplus!(state::DispatchState, prob::AdequacyParams, sample_idx:
     state.imbalance_prestorage .= state.imbalance
 
     return
+
+end
+
+# Adapted from PRAS
+function randtransitiontime(
+    rng::AbstractRNG, p::AbstractVector{Float64}, t_now::Int, t_last::Int
+)
+
+    cdf = 0.
+    p_noprevtransition = 1.
+
+    x = rand(rng)
+    t = t_now + 1
+
+    while t <= t_last
+        p_t = p[t]
+        cdf += p_noprevtransition * p_t
+        x < cdf && return t
+        p_noprevtransition *= (1. - p_t)
+        t += 1
+    end
+
+    return t_last + 1
 
 end
 
@@ -567,7 +635,7 @@ function makesamples(samplestream::Channel{Int}, nsamples::Int)
 
 end
 
-function solve(prob::AdequacyParams; samples::Int)
+function solve(prob::AdequacyParams; samples::Int, threaded::Bool=true)
 
     threads = nthreads()
     samplestream = Channel{Int}(2*threads)
@@ -575,7 +643,6 @@ function solve(prob::AdequacyParams; samples::Int)
     
     @spawn makesamples(samplestream, samples)
 
-    threaded = true
     if threaded
         
         for _ in 1:threads

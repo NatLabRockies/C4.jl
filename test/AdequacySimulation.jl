@@ -1,17 +1,18 @@
 @testset "AdequacySimulation" begin
 
-import C4.AdequacyModel: AdequacyParams, GeneratorParams, StorageParams,
+import C4.AdequacyModel: AdequacyParams, StorageParams,
                          DispatchState, ResultAccumulator, AdequacySimulationResult,
                          shift_energy_forward!, drawdown_soc!, solve_single!
 
 @testset "Deterministic single-storage" begin
 
-    gen1 = GeneratorParams(11., 0.0, 1.0)
     stor1 = StorageParams(0.9, 0.9, 5., 10.)
 
     prob = AdequacyParams(
         [10., 12.],
-        [gen1 gen1],
+        fill(11., 1, 2),
+        zeros(2, 1),
+        ones(2, 1),
         [stor1]
     )
 
@@ -68,13 +69,14 @@ end
 
 @testset "Deterministic multi-storage" begin
 
-    gen1 = GeneratorParams(11., 0.0, 1.0)
     stor1 = StorageParams(0.9, 0.9, 1., .9)
     stor2 = StorageParams(0.8, 0.8, 1., .8)
 
     prob = AdequacyParams(
         [10., 10, 13.],
-        [gen1 gen1 gen1],
+        fill(11., 1, 3),
+        zeros(3, 1),
+        ones(3, 1),
         [stor1, stor2]
     )
 
@@ -119,8 +121,6 @@ end
         @test results.generation_dEUEs ≈ [0., 0, 1]
         @test results.storage_power_dEUEs ≈ [0 0; 0 0; 0 0]
         @test results.storage_energy_dEUEs ≈ [0 0; .9 .8; 0 0]
-        # TODO: Derive formal primal/dual objectives & show these
-        #       results satisfy complementarity slackness
 
     end
     
@@ -140,11 +140,11 @@ end
 
     @testset "Steady state, no storage" begin
 
-        gen = GeneratorParams(6., 0.1, 0.9)
-
         prob = AdequacyParams(
             [10., 12.],
-            [gen gen; gen gen],
+            fill(6., 2, 2),
+            fill(0.1, 2, 2),
+            fill(0.9, 2, 2),
             StorageParams[]
         )
         
