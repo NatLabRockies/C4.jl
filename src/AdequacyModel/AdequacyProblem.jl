@@ -7,7 +7,7 @@ struct AdequacyProblem
 
     function AdequacyProblem(sys::SystemParams; samples::Int)
 
-        demand = sys.regions[1].demand .* powerunits_MW
+        demand = round_to_rational.(sys.regions[1].demand .* powerunits_MW)
 
         generators_capacity, generators_lambda, generators_mu =
             load_generators(sys)
@@ -31,7 +31,7 @@ function load_generators(sys::SystemParams)
     n_gens, has_variable = count_gens(sys)
     region = first(sys.regions)
 
-    generators_capacity = Matrix{Float64}(undef, n_gens, n_timesteps)
+    generators_capacity = Matrix{Rational{Int}}(undef, n_gens, n_timesteps)
     generators_lambda = Matrix{Float64}(undef, n_timesteps, n_gens)
     generators_mu = Matrix{Float64}(undef, n_timesteps, n_gens)
 
@@ -42,7 +42,7 @@ function load_generators(sys::SystemParams)
             for _ in 1:site.units
                 g_last += 1
                 generators_capacity[g_last, :] .=
-                    site.rating .* site.unit_size .* powerunits_MW
+                    round_to_rational.(site.rating .* site.unit_size .* powerunits_MW)
                 generators_lambda[:, g_last] .= site.λ
                 generators_mu[:, g_last] .= site.μ
             end
@@ -51,11 +51,11 @@ function load_generators(sys::SystemParams)
 
     if has_variable
 
-        variable_capacity = zeros(n_timesteps)
+        variable_capacity = zeros(Rational{Int}, n_timesteps)
 
         for tech in region.variabletechs_existing
             for site in tech.sites
-                variable_capacity .+= site.capacity .* powerunits_MW .* site.availability
+                variable_capacity .+= round_to_rational.(site.capacity .* powerunits_MW .* site.availability)
             end
         end
 
@@ -108,17 +108,21 @@ function load_storages(sys::SystemParams)
     for (s_idx, s) in enumerate(stor_perm)
 
         stor = region.storagetechs_existing[s]
-        oneway_eff = sqrt(stor.roundtrip_efficiency)
+        oneway_eff = round_to_rational(sqrt(stor.roundtrip_efficiency))
 
         storages[s_idx] = StorageParams(
             oneway_eff, oneway_eff,
-            maxpower(stor) * powerunits_MW, maxenergy(stor) * powerunits_MW)
+            round_to_rational(maxpower(stor) * powerunits_MW),
+            round_to_rational(maxenergy(stor) * powerunits_MW))
 
     end
 
     return storages, stor_perm
 
 end
+
+round_to_rational(x::Float64, digits::Int=2) =
+    round(Int, x * 10^digits) // 10^digits
 
 struct AdequacyResult
 
@@ -136,7 +140,7 @@ end
 
 function solve(prob::AdequacyProblem)
 
-    result = solve(prob.params, samples=prob.samples)
+    result = solve(prob.params, samples=prob.samples, threaded=false)
 
     ip = invperm(prob.storage_permutation)
     stor_power_dEUE = sum(result.storage_power_dEUEs, dims=1)[ip]

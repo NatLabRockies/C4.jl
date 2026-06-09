@@ -6,11 +6,11 @@ import C4.AdequacyModel: AdequacyParams, StorageParams,
 
 @testset "Deterministic single-storage" begin
 
-    stor1 = StorageParams(0.9, 0.9, 5., 10.)
+    stor1 = StorageParams(9//10, 9//10, 5, 10)
 
     prob = AdequacyParams(
-        [10., 12.],
-        fill(11., 1, 2),
+        [10//1, 12//1],
+        fill(11//1, 1, 2),
         zeros(2, 1),
         ones(2, 1),
         [stor1]
@@ -26,15 +26,15 @@ import C4.AdequacyModel: AdequacyParams, StorageParams,
 
         shift_energy_forward!(state, prob, 1)
 
-        @test state.imbalance ≈ [0., -0.19]
-        @test state.storage_soc ≈ [0.9]
-        @test state.storage_dispatch ≈ [-1.; 0.81]
+        @test state.imbalance == [0, -19//100]
+        @test state.storage_soc == [9//10]
+        @test state.storage_dispatch == [-1; 81//100;;]
 
         drawdown_soc!(state, prob, 2)
 
-        @test state.imbalance ≈ [0., -0.19]
-        @test state.storage_soc ≈ [0.0]
-        @test state.storage_dispatch ≈ [-1.; 0.81]
+        @test state.imbalance == [0, -19//100]
+        @test state.storage_soc == [0]
+        @test state.storage_dispatch == [-1; 81//100;;]
 
     end
 
@@ -57,7 +57,7 @@ import C4.AdequacyModel: AdequacyParams, StorageParams,
     
     @testset "Multiple samples" begin
 
-        results = solve(prob, samples=10)
+        results = solve(prob, samples=10, threaded=false)
         
         @test results.lolps ≈ [0., 1.]
         @test results.eues ≈ [0., .19]
@@ -69,12 +69,12 @@ end
 
 @testset "Deterministic multi-storage" begin
 
-    stor1 = StorageParams(0.9, 0.9, 1., .9)
-    stor2 = StorageParams(0.8, 0.8, 1., .8)
+    stor1 = StorageParams(9//10, 9//10, 1, 9//10)
+    stor2 = StorageParams(8//10, 8//10, 1, 8//10)
 
     prob = AdequacyParams(
-        [10., 10, 13.],
-        fill(11., 1, 3),
+        [10//1, 10//1, 13//1],
+        fill(11//1, 1, 3),
         zeros(3, 1),
         ones(3, 1),
         [stor1, stor2]
@@ -84,27 +84,27 @@ end
 
         state = DispatchState(prob)
         
-        state.imbalance .= [1., 1., -2.]
-        state.storage_soc .= 0.
-        state.storage_dispatch .= 0.
+        state.imbalance .= [1, 1, -2]
+        state.storage_soc .= 0
+        state.storage_dispatch .= 0
 
         shift_energy_forward!(state, prob, 1)
 
-        @test state.imbalance ≈ [0, 1, -1.19]
-        @test state.storage_soc ≈ [.9, 0]
-        @test state.storage_dispatch ≈ [-1 0; 0 0; .81 0]
+        @test state.imbalance == [0, 1, -119//100]
+        @test state.storage_soc == [9//10, 0]
+        @test state.storage_dispatch == [-1 0; 0 0; 81//100 0]
         
         shift_energy_forward!(state, prob, 2)
 
-        @test state.imbalance ≈ [0, 0, -.55]
-        @test state.storage_soc ≈ [.9, .8]
-        @test state.storage_dispatch ≈ [-1 0; 0 -1; .81 .64]
+        @test state.imbalance == [0, 0, -55//100]
+        @test state.storage_soc == [9//10, 8//10]
+        @test state.storage_dispatch == [-1 0; 0 -1; 81//100 64//100]
 
         drawdown_soc!(state, prob, 3)
 
-        @test state.imbalance ≈ [0, 0, -.55]
-        #@test state.storage_soc ≈ [0., 0] # Passes, but compare-to-zero issues
-        @test state.storage_dispatch ≈ [-1 0; 0 -1; .81 .64]
+        @test state.imbalance == [0, 0, -55//100]
+        @test state.storage_soc == [0, 0]
+        @test state.storage_dispatch == [-1 0; 0 -1; 81//100 64//100]
 
     end
 
@@ -114,7 +114,7 @@ end
         resacc = ResultAccumulator(prob)
         solve_single!(state, resacc, prob, 0)
         results = AdequacySimulationResult(prob, resacc)
-        
+
         @test resacc.n_samples == 1
         @test results.lolps ≈ [0, 0, 1.]
         @test results.eues ≈ [0, 0, .55]
@@ -127,10 +127,12 @@ end
     @testset "Multiple samples" begin
 
         results = solve(prob, samples=10)
-        
+
         @test results.lolps ≈ [0, 0, 1.]
         @test results.eues ≈ [0, 0, .55]
         @test results.generation_dEUEs ≈ [0., 0, 1]
+        @test results.storage_power_dEUEs ≈ [0 0; 0 0; 0 0]
+        @test results.storage_energy_dEUEs ≈ [0 0; .9 .8; 0 0]
 
     end
 
@@ -141,8 +143,8 @@ end
     @testset "Steady state, no storage" begin
 
         prob = AdequacyParams(
-            [10., 12.],
-            fill(6., 2, 2),
+            [10//1, 12//1],
+            fill(6//1, 2, 2),
             fill(0.1, 2, 2),
             fill(0.9, 2, 2),
             StorageParams[]
