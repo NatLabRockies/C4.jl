@@ -108,10 +108,10 @@ function load_storages(sys::SystemParams)
     for (s_idx, s) in enumerate(stor_perm)
 
         stor = region.storagetechs_existing[s]
-        oneway_eff = round_to_rational(sqrt(stor.roundtrip_efficiency))
+        roundtrip_eff = round_to_rational(stor.roundtrip_efficiency)
 
         storages[s_idx] = StorageParams(
-            oneway_eff, oneway_eff,
+            1, roundtrip_eff,
             round_to_rational(maxpower(stor) * powerunits_MW),
             round_to_rational(maxenergy(stor) * powerunits_MW))
 
@@ -121,7 +121,7 @@ function load_storages(sys::SystemParams)
 
 end
 
-round_to_rational(x::Float64, digits::Int=2) =
+round_to_rational(x::Float64; digits::Int=2) =
     round(Int, x * 10^digits) // 10^digits
 
 struct AdequacyResult

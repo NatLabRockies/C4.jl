@@ -206,7 +206,11 @@ function check_strong_duality(prob::AdequacyParams, state::DispatchState)
         sum(state.imbalance_prestorage .* state.dEUE_generator)
 
     if primal_objval != dual_objval
-        error("Strong duality violation - primal = $primal_objval, dual = $dual_objval")
+        rel_error = Float64(abs(primal_objval - dual_objval) / primal_objval)
+        error("Strong duality violation - " *
+              "primal = $primal_objval, dual = $dual_objval, relative error = $rel_error")
+    else
+        println("Strong duality ok")
     end
 
 end
