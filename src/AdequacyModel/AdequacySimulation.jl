@@ -207,10 +207,11 @@ function check_strong_duality(prob::AdequacyParams, state::DispatchState)
 
     if primal_objval != dual_objval
         rel_error = Float64(abs(primal_objval - dual_objval) / primal_objval)
+        println(prob)
         error("Strong duality violation - " *
               "primal = $primal_objval, dual = $dual_objval, relative error = $rel_error")
     else
-        println("Strong duality ok")
+        #println("Strong duality ok")
     end
 
 end
