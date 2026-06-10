@@ -56,6 +56,7 @@ struct DispatchState
 
     imbalance_prestorage::Vector{Float64} # n_timesteps - hacky but fine for now
     imbalance::Vector{Float64} # n_timesteps
+    shortfalls::Vector{Float64} # n_timesteps - per-sample shortfall scratch
     
     generator_availability::Vector{Bool} # n_generators
     
@@ -77,6 +78,7 @@ struct DispatchState
             
             Vector{Float64}(undef, prob.n_timesteps),
             Vector{Float64}(undef, prob.n_timesteps),
+            zeros(prob.n_timesteps),
             
             Vector{Bool}(undef, prob.n_generators),
             
@@ -108,12 +110,19 @@ mutable struct ResultAccumulator
     dEUE_storage_power::Matrix{Float64} # n_timesteps x n_storages
     dEUE_storage_energy::Matrix{Float64} # n_timesteps x n_storages
 
+    shortfall_samples::Vector{Vector{Float64}} # n_samples, each of length n_timesteps
+    storage_power_samples::Vector{Vector{Float64}} # n_samples, each of length n_storages
+    storage_energy_samples::Vector{Vector{Float64}} # n_samples, each of length n_storages
+
     ResultAccumulator(prob::AdequacyParams) =
         new(prob.n_timesteps, 0,
             zeros(prob.n_timesteps), zeros(prob.n_timesteps),
             zeros(prob.n_timesteps),
             zeros(prob.n_timesteps, prob.n_storages),
-            zeros(prob.n_timesteps, prob.n_storages)
+            zeros(prob.n_timesteps, prob.n_storages),
+            Vector{Vector{Float64}}(),
+            Vector{Vector{Float64}}(),
+            Vector{Vector{Float64}}()
         )
 
 end
@@ -128,6 +137,10 @@ function merge!(acc1::ResultAccumulator, acc2::ResultAccumulator)
     acc1.dEUE_generator .+= acc2.dEUE_generator
     acc1.dEUE_storage_power .+= acc2.dEUE_storage_power
     acc1.dEUE_storage_energy .+= acc2.dEUE_storage_energy
+
+    append!(acc1.shortfall_samples, acc2.shortfall_samples)
+    append!(acc1.storage_power_samples, acc2.storage_power_samples)
+    append!(acc1.storage_energy_samples, acc2.storage_energy_samples)
 
     return
 
@@ -169,6 +182,16 @@ function solve_single!(
 
         # check_strong_duality(prob, state)
 
+        # Store per-sample per-timestep shortfalls for CVaR computation
+        push!(results.shortfall_samples, copy(state.shortfalls))
+
+        # Store per-sample storage duals (summed over timesteps) for CVaR computation
+        push!(results.storage_power_samples,
+            [sum(state.dEUE_storage_charge_limit[:,s] .+
+                 state.dEUE_storage_discharge_limit[:,s]) for s in 1:prob.n_storages])
+        push!(results.storage_energy_samples,
+            [sum(state.dEUE_storage_energy_limit[:,s]) for s in 1:prob.n_storages])
+
         return
 
 end
@@ -199,7 +222,8 @@ function initialize!(state::DispatchState, prob::AdequacyParams, sample_idx::Int
     
     sample_surplus!(state, prob, sample_idx)
     
-    fill!(state.storage_soc, 0.) # Could take this from user
+    fill!(state.shortfalls, 0.)
+    fill!(state.storage_soc, 0.)
     fill!(state.storage_dispatch, 0.)
     
     fill!(state.dEUE_generator, 0.)
@@ -452,6 +476,7 @@ function record_primals!(
 
     results.lolps[t] += 1.
     results.eues[t] += shortfall
+    state.shortfalls[t] = shortfall
 
     return
 
@@ -510,6 +535,10 @@ struct AdequacySimulationResult
     storage_power_dEUEs::Matrix{Float64} # n_timesteps x n_storages
     storage_energy_dEUEs::Matrix{Float64} # n_timesteps x n_storages
 
+    shortfall_samples::Matrix{Float64} # n_timesteps × n_samples
+    storage_power_samples::Matrix{Float64} # n_storages × n_samples
+    storage_energy_samples::Matrix{Float64} # n_storages × n_samples
+
     AdequacySimulationResult(prob::AdequacyParams, acc::ResultAccumulator) =
         new(
                 prob.n_timesteps, prob.n_storages, prob.demand,
@@ -517,7 +546,10 @@ struct AdequacySimulationResult
                 acc.eues / acc.n_samples,
                 acc.dEUE_generator / acc.n_samples,
                 acc.dEUE_storage_power / acc.n_samples,
-                acc.dEUE_storage_energy / acc.n_samples
+                acc.dEUE_storage_energy / acc.n_samples,
+                reduce(hcat, acc.shortfall_samples),
+                reduce(hcat, acc.storage_power_samples),
+                reduce(hcat, acc.storage_energy_samples)
         )
 
 end

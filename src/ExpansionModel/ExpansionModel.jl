@@ -33,10 +33,10 @@ include("build.jl")
 
 include("riskestimates.jl")
 
-export ExpansionProblem, EUECuttingPlaneParams, warmstart_builds!, solve!,
-       capex, opex, cost, lcoe,
-       CVaRRiskEstimatePlaneParams, CVaRRiskEstimatePeriodParams,
-       CVaRRiskEstimateParams, cvar_estimate, nullcvar_estimator
+export ExpansionProblem, EUECuttingPlaneParams, CVaRCuttingPlaneParams,
+       CVaRCuttingPlaneRegionParams, CVaRReliabilityConstraints,
+       warmstart_builds!, solve!,
+       capex, opex, cost, lcoe
 
 # TODO: Simplify this now that it doesn't need to be abstracted
 const ExpansionEconomicDispatch =
@@ -52,7 +52,7 @@ mutable struct ExpansionProblem
 
     economicdispatch::ExpansionEconomicDispatch
 
-    reliabilityconstraints::ReliabilityConstraints
+    reliabilityconstraints::AbstractReliabilityConstraints
 
     function ExpansionProblem(
         system::SystemParams,
@@ -87,11 +87,47 @@ mutable struct ExpansionProblem
 
     end
 
+    # Raw-field constructor used by outer CVaR constructor
+    function ExpansionProblem(
+        model::JuMP.Model, system::SystemParams, builds::SystemExpansion,
+        economicdispatch::ExpansionEconomicDispatch,
+        reliabilityconstraints::AbstractReliabilityConstraints)
+        new(model, system, builds, economicdispatch, reliabilityconstraints)
+    end
+
 end
 
-# TODO: CVaRReliabilityConstraints needs to be redesigned to work with the
-# EUECuttingPlaneParams-based ReliabilityConstraints architecture (ReliabilityDispatch
-# was removed in gs/eue_surface_storage). See riskestimates.jl for the CVaR types.
+function ExpansionProblem(
+    system::SystemParams,
+    chronology::TimeProxyAssignment,
+    riskparams::Vector{CVaRCuttingPlaneParams},
+    cvar_max::Float64, # mean daily CVaR in MWh
+    optimizer)
+
+    n_timesteps = length(system.timesteps)
+
+    timestepcount(chronology) == n_timesteps ||
+        error("Time period assignment is incompatible with system timesteps")
+
+    m = JuMP.direct_model(optimizer)
+
+    builds = SystemExpansion(
+        [RegionExpansion(m, r) for r in system.regions],
+        [InterfaceExpansion(m, i) for i in system.interfaces])
+
+    economicdispatch = DispatchSequence(
+        EconomicDispatch, m, builds, chronology)
+
+    reliabilityconstraints = CVaRReliabilityConstraints(
+        m, builds, riskparams, cvar_max)
+
+    opex_scalar = 8766 / n_timesteps
+
+    @objective(m, Min, cost(builds) + opex_scalar * cost(economicdispatch))
+
+    return ExpansionProblem(m, system, builds, economicdispatch, reliabilityconstraints)
+
+end
 
 function solve!(prob::ExpansionProblem)
 

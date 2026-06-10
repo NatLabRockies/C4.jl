@@ -120,6 +120,10 @@ struct AdequacyResult
     storage_power_dEUEs::Vector{Float64} # n_storages
     storage_energy_dEUEs::Vector{Float64} # n_storages
 
+    shortfall_samples::Matrix{Float64} # n_timesteps × n_samples
+    storage_power_samples::Matrix{Float64} # n_storages × n_samples
+    storage_energy_samples::Matrix{Float64} # n_storages × n_samples
+
 end
 
 function solve(prob::AdequacyProblem)
@@ -132,7 +136,10 @@ function solve(prob::AdequacyProblem)
 
     return AdequacyResult(
         prob.sys.timesteps, result.demand, result.lolps, result.eues,
-        result.generation_dEUEs, stor_power_dEUE, stor_energy_dEUE)
+        result.generation_dEUEs, stor_power_dEUE, stor_energy_dEUE,
+        result.shortfall_samples,
+        result.storage_power_samples[ip, :],
+        result.storage_energy_samples[ip, :])
 
 end
 

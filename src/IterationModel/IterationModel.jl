@@ -7,9 +7,7 @@ using C4.ExpansionModel
 
 import ..store, ..powerunits_MW
 import C4.ExpansionModel: EUECuttingPlaneParams, EUECuttingPlaneRegionParams,
-                          CVaRRiskEstimateParams, CVaRRiskEstimatePeriodParams,
-                          CVaRRiskEstimatePlaneParams,
-                          nullcvar_estimator
+                          CVaRCuttingPlaneParams, CVaRCuttingPlaneRegionParams
 
 import Dates: Date, now
 import DBInterface
@@ -27,7 +25,7 @@ function iterate_ra_cem(
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
     check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN,
-    risk_metric::Symbol=:eue, cvar_alpha::Float64=0.95)
+    risk_metric::Symbol=:eue, cvar_alpha::Float64=0.95, max_ncvar::Float64=NaN)
 
     persist = length(outfile) > 0
     timeout += time()
@@ -39,6 +37,12 @@ function iterate_ra_cem(
 
     risk_metric in (:eue, :cvar) ||
         error("Unsupported risk metric $(risk_metric). Use :eue or :cvar")
+
+    risk_metric == :cvar && isnan(max_ncvar) &&
+        error("max_ncvar must be provided when risk_metric=:cvar")
+
+    # CVaR uses the same annual normalization as EUE (MWh/year per ppm)
+    max_cvar = risk_metric == :cvar ? max_ncvar * neue_factor : NaN
 
     ram_start = now()
     ram = AdequacyProblem(sys, samples=nsamples)
@@ -83,6 +87,7 @@ function iterate_ra_cem(
     prev_cem = nothing
     # Shouldn't we use initial RA results here? Right now they're only used for ASPP
     eue_estimator = EUECuttingPlaneParams[]
+    cvar_estimator = CVaRCuttingPlaneParams[]
     n_iters = 0
 
     while (time() < timeout)
@@ -90,9 +95,11 @@ function iterate_ra_cem(
         n_iters += 1
         cem_start = now()
 
-        # TODO: CVaR support - needs a new ExpansionProblem constructor accepting
-        # CVaRReliabilityConstraints (see riskestimates.jl) to replace the EUE cutting planes
-        cem = ExpansionProblem(sys, chronology, eue_estimator, max_eue, optimizer)
+        cem = if risk_metric == :cvar
+            ExpansionProblem(sys, chronology, cvar_estimator, max_cvar, optimizer)
+        else
+            ExpansionProblem(sys, chronology, eue_estimator, max_eue, optimizer)
+        end
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
         # println("Recurrences:")
@@ -128,10 +135,12 @@ function iterate_ra_cem(
         end
 
         if endog_risk
-            push!(eue_estimator, EUECuttingPlaneParams(cem, ram_result))
-            # TODO: CVaR cutting plane support - CVaRRiskEstimateParams needs to be
-            # redesigned to work with the EUECuttingPlaneParams architecture.
-            # Previously relied on ExpansionAdequacyContext (removed in gs/eue_surface_storage).
+            if risk_metric == :eue
+                push!(eue_estimator, EUECuttingPlaneParams(cem, ram_result))
+            elseif risk_metric == :cvar
+                push!(cvar_estimator,
+                    CVaRCuttingPlaneParams(cem, ram_result, cvar_alpha))
+            end
         end
 
         aug_end = now()
@@ -179,17 +188,42 @@ function iterate_ra_cem(
 
     end
 
+    persist && DBInterface.close!(con)
     return cem, ram_result, pcm
 
 end
 
-# TODO: CVaRRiskEstimateParams and CVaRRiskEstimatePeriodParams constructors need
-# to be redesigned for the new architecture. Previously they depended on
-# ExpansionAdequacyContext (removed in gs/eue_surface_storage), which tracked
-# available_capacity per dispatch period alongside the adequacy result.
-# New approach should derive CVaR cutting plane params directly from
-# AdequacyResult (e.g. using per-sample shortfall data) and ExpansionProblem
-# builds, analogous to how EUECuttingPlaneParams(cem, ram_result) works.
+function CVaRCuttingPlaneParams(
+    cem::ExpansionProblem,
+    adequacy::AdequacyResult,
+    alpha::Float64)
+
+    # shortfall_samples is n_timesteps × n_samples (in internal power units)
+    shortfall_samples = adequacy.shortfall_samples ./ powerunits_MW  # MWh
+
+    # Total EUE per sample across all timesteps
+    total_shortfall_samples = vec(sum(shortfall_samples, dims=1))  # n_samples
+
+    # Tail: worst α-fraction of samples by total EUE
+    tail = cvar_tail_mask(total_shortfall_samples, alpha)
+
+    base_cvar = tail_masked_mean(total_shortfall_samples, tail)
+
+    # storage_power_samples / storage_energy_samples: n_storages × n_samples
+    # (already in internal power units — divided here to match shortfall units)
+    stor_power_samples = adequacy.storage_power_samples ./ powerunits_MW
+    stor_energy_samples = adequacy.storage_energy_samples ./ powerunits_MW
+
+    regions = [
+        CVaRCuttingPlaneRegionParams(
+            builds, shortfall_samples, tail,
+            stor_power_samples, stor_energy_samples)
+        for builds in cem.builds.regions
+    ]
+
+    return CVaRCuttingPlaneParams(base_cvar, regions)
+
+end
 
 function cvar_tail_mask(samples::AbstractVector{<:Real}, alpha::Float64)
 

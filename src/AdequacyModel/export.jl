@@ -122,6 +122,25 @@ function store(con::DBInterface.Connection, iter::Int, result::AdequacyResult)
 
     DuckDB.close(appender)
 
+    # Per-sample annual total EUE — the distribution CVaR directly operates on
+    DBInterface.execute(con, "CREATE TABLE IF NOT EXISTS sample_eues (
+        iteration INTEGER REFERENCES iterations(id),
+        sample    INTEGER,
+        annual_eue DOUBLE,
+        PRIMARY KEY (iteration, sample)
+    )")
+
+    n_samples = size(result.shortfall_samples, 2)
+    sample_appender = DuckDB.Appender(con, "sample_eues")
+    for s in 1:n_samples
+        annual = sum(result.shortfall_samples[:, s])
+        DuckDB.append(sample_appender, iter)
+        DuckDB.append(sample_appender, s)
+        DuckDB.append(sample_appender, annual)
+        DuckDB.end_row(sample_appender)
+    end
+    DuckDB.close(sample_appender)
+
     return
 
 end

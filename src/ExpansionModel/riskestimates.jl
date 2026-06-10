@@ -177,127 +177,215 @@ struct ReliabilityConstraints <: AbstractReliabilityConstraints
 
 end
 
-struct CVaRRiskEstimatePlaneParams
+# CVaR cutting plane types.
+# Gradients are computed directly from per-sample per-timestep shortfall data
+# in the tail scenarios, following the approach of vl/cvar-stor-eue.
 
-    base_cvar::Float64
+tail_mean(values::AbstractVector{<:Real}, tail::AbstractVector{Bool}) = begin
+    length(values) == length(tail) ||
+        error("Tail mask length does not match sample vector length")
+    tail_values = values[tail]
+    isempty(tail_values) ? 0.0 : sum(tail_values) / length(tail_values)
+end
 
-    # (conditionally) Deterministic Capacity:
-    # Available Variable Gen + Available Thermal Gen
-    # + Storage Discharge - Storage Charge + Imports - Exports
-    available_capacity::Float64
+struct ThermalCVaRReduction
 
-    # CVaR change associated with adding (conditionally) deterministic capacity
+    nameplate::Float64
     dCVaR::Float64
 
-end
+    function ThermalCVaRReduction(
+        build::ThermalExpansion,
+        shortfall_samples::Matrix{Float64}, # n_timesteps × n_samples
+        tail::AbstractVector{Bool})
 
-function cvar_estimate(
-    available_capacity::JuMP_ExpressionRef,
-    riskparams::CVaRRiskEstimatePlaneParams)
+        T = size(shortfall_samples, 1)
+        nameplate = value(nameplatecapacity(build))
+        dCVaR = -sum(
+            tail_mean(
+                min.(vec(view(shortfall_samples, t, :)), availability(build.params, t)),
+                tail)
+            for t in 1:T)
 
-    return riskparams.base_cvar - riskparams.dCVaR *
-        (available_capacity - riskparams.available_capacity)
-
-end
-
-const CVaRRiskEstimatePeriodParams = Array{CVaRRiskEstimatePlaneParams,3} # RxTxJ
-
-struct CVaRRiskEstimateParams
-
-    times::TimeProxyAssignment
-    periods::Vector{CVaRRiskEstimatePeriodParams}
-    alpha::Float64
-
-    function CVaRRiskEstimateParams(
-        times::TimeProxyAssignment,
-        estimators::Vector{CVaRRiskEstimatePeriodParams};
-        alpha::Float64=0.95)
-
-        length(times.periods) == length(estimators) ||
-            error("Mismatched count of dispatch periods and CVaR estimators")
-
-        0.0 < alpha < 1.0 ||
-            error("CVaR alpha must be in (0, 1)")
-
-        new(times, estimators, alpha)
+        return new(nameplate, dCVaR)
 
     end
 
 end
 
-allperiods(riskparams::CVaRRiskEstimateParams) =
-    [(period, riskparams.periods[i])
-     for (i, period) in enumerate(riskparams.times.periods)]
+cvar_adjustment(riskparams::ThermalCVaRReduction, build::ThermalExpansion) =
+    riskparams.dCVaR * (nameplatecapacity(build) - riskparams.nameplate)
 
-function nullcvar_estimator(
-    times::TimeProxyAssignment,
-    n_regions::Int;
-    alpha::Float64=0.95)
+struct VariableSiteCVaRReduction
 
-    n_periods = length(times.periods)
-    n_timesteps = times.daylength
+    nameplate::Float64
+    dCVaR::Float64
 
-    nullperiod = Array{CVaRRiskEstimatePlaneParams,3}(
-        undef, n_regions, n_timesteps, 0)
+    function VariableSiteCVaRReduction(
+        build::VariableSiteExpansion,
+        shortfall_samples::Matrix{Float64}, # n_timesteps × n_samples
+        tail::AbstractVector{Bool})
 
-    return CVaRRiskEstimateParams(times, fill(nullperiod, n_periods), alpha=alpha)
+        T = size(shortfall_samples, 1)
+        nameplate = value(nameplatecapacity(build))
+        dCVaR = -sum(
+            tail_mean(
+                min.(vec(view(shortfall_samples, t, :)), availability(build, t)),
+                tail)
+            for t in 1:T)
+
+        return new(nameplate, dCVaR)
+
+    end
 
 end
 
-struct CVaRReliabilityEstimate
+cvar_adjustment(riskparams::VariableSiteCVaRReduction, build::VariableSiteExpansion) =
+    riskparams.dCVaR * (nameplatecapacity(build) - riskparams.nameplate)
 
-    period::TimePeriod
+struct VariableCVaRReduction
 
-    cvar::Matrix{JuMP.VariableRef}
-    cvar_planes::Array{JuMP_GreaterThanConstraintRef,3}
+    sites::Vector{VariableSiteCVaRReduction}
 
-    function CVaRReliabilityEstimate(
-        m::JuMP.Model, system::System,
-        dispatch::ReliabilityDispatch,
-        riskparams::CVaRRiskEstimatePeriodParams)
+    function VariableCVaRReduction(
+        build::VariableExpansion,
+        shortfall_samples::Matrix{Float64},
+        tail::AbstractVector{Bool})
 
-        R, T, J = size(riskparams)
-        period_name = dispatch.period.name
-
-        cvar = @variable(m, [1:R, 1:T], lower_bound = 0)
-        varnames!(cvar, "cvar[$(period_name)]", name.(system.regions), 1:T)
-
-        cvar_planes = @constraint(m, [r in 1:R, t in 1:T, j in 1:J],
-            cvar[r,t] >= cvar_estimate(
-                dispatch.available_capacity[r,t], riskparams[r,t,j])
-        )
-
-        new(dispatch.period, cvar, cvar_planes)
+        sites = [VariableSiteCVaRReduction(site, shortfall_samples, tail)
+                 for site in build.sites]
+        return new(sites)
 
     end
+
+end
+
+cvar_adjustment(riskparams::VariableCVaRReduction, build::VariableExpansion) =
+    sum(cvar_adjustment(rp_site, b_site)
+        for (rp_site, b_site) in zip(riskparams.sites, build.sites); init=0)
+
+struct StorageCVaRReduction
+
+    nameplate_power::Float64
+    dCVaR_power::Float64
+
+    nameplate_energy::Float64
+    dCVaR_energy::Float64
+
+    function StorageCVaRReduction(
+        build::StorageExpansion,
+        power_samples::AbstractVector{Float64}, # n_samples
+        energy_samples::AbstractVector{Float64}, # n_samples
+        tail::AbstractVector{Bool})
+
+        return new(
+            value(maxpower(build)),
+            -tail_mean(power_samples, tail),
+            value(maxenergy(build)),
+            -tail_mean(energy_samples, tail))
+
+    end
+
+end
+
+cvar_adjustment(riskparams::StorageCVaRReduction, build::StorageExpansion) =
+        riskparams.dCVaR_power * (build.power_new - riskparams.nameplate_power) +
+        riskparams.dCVaR_energy * (build.energy_new - riskparams.nameplate_energy)
+
+struct CVaRCuttingPlaneRegionParams
+
+    thermaltechs::Vector{ThermalCVaRReduction}
+    variabletechs::Vector{VariableCVaRReduction}
+    storagetechs::Vector{StorageCVaRReduction}
+
+    function CVaRCuttingPlaneRegionParams(
+        builds::RegionExpansion,
+        shortfall_samples::Matrix{Float64},
+        tail::AbstractVector{Bool},
+        storage_power_samples::Matrix{Float64}, # n_storages × n_samples
+        storage_energy_samples::Matrix{Float64}) # n_storages × n_samples
+
+        thermaltechs = [ThermalCVaRReduction(build, shortfall_samples, tail)
+                        for build in builds.thermaltechs]
+
+        variabletechs = [VariableCVaRReduction(build, shortfall_samples, tail)
+                        for build in builds.variabletechs]
+
+        storagetechs = [StorageCVaRReduction(build,
+                            vec(storage_power_samples[s, :]),
+                            vec(storage_energy_samples[s, :]),
+                            tail)
+                        for (s, build) in enumerate(builds.storagetechs)]
+
+        return new(thermaltechs, variabletechs, storagetechs)
+
+    end
+
+end
+
+function cvar_adjustment(params::CVaRCuttingPlaneRegionParams, builds::RegionExpansion)
+
+    thermal_adjustments = sum(cvar_adjustment(riskparams, build)
+        for (riskparams, build) in zip(params.thermaltechs, builds.thermaltechs);
+        init=0
+    )
+
+    variable_adjustments = sum(cvar_adjustment(riskparams, build)
+        for (riskparams, build) in zip(params.variabletechs, builds.variabletechs);
+        init=0
+    )
+
+    storage_adjustments = sum(cvar_adjustment(riskparams, build)
+        for (riskparams, build) in zip(params.storagetechs, builds.storagetechs);
+        init=0
+    )
+
+    return thermal_adjustments + variable_adjustments + storage_adjustments
+
+end
+
+struct CVaRCuttingPlaneParams
+
+    base_cvar::Float64  # mean total EUE in MWh across tail samples
+    regions::Vector{CVaRCuttingPlaneRegionParams}
+
+end
+
+function cvar_cuttingplane(
+    m::JuMP.Model, cvar::JuMP.VariableRef, params::CVaRCuttingPlaneParams,
+    builds::SystemExpansion)
+
+    expansion_adjustments = sum(cvar_adjustment(riskparams, build)
+        for (riskparams, build) in zip(params.regions, builds.regions))
+
+    plane = @constraint(m, cvar >= params.base_cvar + expansion_adjustments)
+    JuMP.set_name(plane, "cvar_cutting_plane")
+
+    return plane
 
 end
 
 struct CVaRReliabilityConstraints <: AbstractReliabilityConstraints
 
-    estimates::Vector{CVaRReliabilityEstimate}
+    cvar_params::Vector{CVaRCuttingPlaneParams}
 
-    region_cvar::Vector{JuMP_ExpressionRef}
-    region_cvar_max::Vector{JuMP_LessThanConstraintRef}
+    cvar::JuMP.VariableRef
+    cvar_max::JuMP_LessThanConstraintRef
+    cvar_cuttingplanes::Vector{JuMP_GreaterThanConstraintRef}
 
     function CVaRReliabilityConstraints(
-        m::JuMP.Model, system::System, dispatches::Vector{<:ReliabilityDispatch},
-        riskparams::CVaRRiskEstimateParams, cvar_max::Vector{Float64})
+        m::JuMP.Model, builds::SystemExpansion,
+        cvar_params::Vector{CVaRCuttingPlaneParams}, cvar_max::Float64)
 
-        n_regions = length(system.regions)
+        cvar = @variable(m, lower_bound = 0)
+        JuMP.set_name(cvar, "cvar")
 
-        cvar_estimates = [
-            CVaRReliabilityEstimate(m, system, dispatch, periodriskparams)
-            for (dispatch, periodriskparams)
-            in zip(dispatches, riskparams.periods)]
+        cvar_max_con = @constraint(m, cvar <= cvar_max)
+        JuMP.set_name(cvar_max_con, "cvar_max")
 
-        region_cvar = @expression(m, [r in 1:n_regions],
-            sum(sum(estimate.cvar[r, :]) for estimate in cvar_estimates))
+        cvar_cuttingplanes = [cvar_cuttingplane(m, cvar, params, builds)
+                              for params in cvar_params]
 
-        region_cvar_max = @constraint(m, [r in 1:n_regions],
-            region_cvar[r] <= cvar_max[r])
-
-        new(cvar_estimates, region_cvar, region_cvar_max)
+        new(cvar_params, cvar, cvar_max_con, cvar_cuttingplanes)
 
     end
 
