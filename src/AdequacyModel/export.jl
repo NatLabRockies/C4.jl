@@ -2,6 +2,8 @@ import DBInterface
 import DuckDB
 import Dates: DateTime
 
+import PRASCore: EUE, LOLE, val, stderror
+
 import ..store, ..powerunits_MW
 
 function store(
@@ -87,16 +89,16 @@ function store(con::DBInterface.Connection, iter::Int, result::AdequacyResult)
 
     for (r, regionname) in enumerate(region_names)
 
-        eue = PRAS.EUE(result.shortfalls, regionname)
-        lole = PRAS.LOLE(result.shortfalls, regionname)
+        eue = EUE(result.shortfalls, regionname)
+        lole = LOLE(result.shortfalls, regionname)
 
         DuckDB.append(appender.region_adequacies, iter)
         DuckDB.append(appender.region_adequacies, regionname)
         DuckDB.append(appender.region_adequacies, region_demands[r])
-        DuckDB.append(appender.region_adequacies, PRAS.val(eue))
-        DuckDB.append(appender.region_adequacies, PRAS.stderror(eue))
-        DuckDB.append(appender.region_adequacies, PRAS.val(lole))
-        DuckDB.append(appender.region_adequacies, PRAS.stderror(lole))
+        DuckDB.append(appender.region_adequacies, val(eue))
+        DuckDB.append(appender.region_adequacies, stderror(eue))
+        DuckDB.append(appender.region_adequacies, val(lole))
+        DuckDB.append(appender.region_adequacies, stderror(lole))
         DuckDB.end_row(appender.region_adequacies)
 
     end
@@ -105,16 +107,16 @@ function store(con::DBInterface.Connection, iter::Int, result::AdequacyResult)
 
     for (t, timestamp) in enumerate(result.shortfalls.timestamps)
 
-        eue = PRAS.EUE(result.shortfalls, timestamp)
-        lole = PRAS.LOLE(result.shortfalls, timestamp)
+        eue = EUE(result.shortfalls, timestamp)
+        lole = LOLE(result.shortfalls, timestamp)
 
         DuckDB.append(appender.timestep_adequacies, iter)
         DuckDB.append(appender.timestep_adequacies, DateTime(timestamp))
         DuckDB.append(appender.timestep_adequacies, timestep_demands[t])
-        DuckDB.append(appender.timestep_adequacies, PRAS.val(eue))
-        DuckDB.append(appender.timestep_adequacies, PRAS.stderror(eue))
-        DuckDB.append(appender.timestep_adequacies, PRAS.val(lole))
-        DuckDB.append(appender.timestep_adequacies, PRAS.stderror(lole))
+        DuckDB.append(appender.timestep_adequacies, val(eue))
+        DuckDB.append(appender.timestep_adequacies, stderror(eue))
+        DuckDB.append(appender.timestep_adequacies, val(lole))
+        DuckDB.append(appender.timestep_adequacies, stderror(lole))
         DuckDB.end_row(appender.timestep_adequacies)
 
     end

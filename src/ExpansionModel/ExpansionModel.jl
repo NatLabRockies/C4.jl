@@ -18,7 +18,8 @@ import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
 import ..Data: ThermalExistingParams, ThermalCandidateParams,
                VariableExistingParams, VariableExistingSiteParams,
                VariableCandidateParams, VariableCandidateSiteParams,
-               StorageExistingParams, StorageCandidateParams
+               StorageExistingParams, StorageCandidateParams,
+               SystemParams, RegionParams, InterfaceParams
 
 using ..Data
 using ..AdequacyModel
@@ -32,14 +33,12 @@ include("build.jl")
 
 include("riskestimates.jl")
 
-export ExpansionProblem, ExpansionAdequacyContext, warmstart_builds!, solve!,
+export ExpansionProblem, EUECuttingPlaneParams, warmstart_builds!, solve!,
        capex, opex, cost, lcoe, nullestimator
 
+# TODO: Simplify this now that it doesn't need to be abstracted
 const ExpansionEconomicDispatch =
     DispatchSequence{EconomicDispatch{SystemExpansion,RegionExpansion,InterfaceExpansion}}
-
-const ExpansionReliabilityDispatch =
-    DispatchSequence{ReliabilityDispatch{SystemExpansion,RegionExpansion,InterfaceExpansion}}
 
 mutable struct ExpansionProblem
 
@@ -51,32 +50,20 @@ mutable struct ExpansionProblem
 
     economicdispatch::ExpansionEconomicDispatch
 
-    reliabilitydispatch::ExpansionReliabilityDispatch
     reliabilityconstraints::ReliabilityConstraints
 
     function ExpansionProblem(
         system::SystemParams,
-        riskparams::RiskEstimateParams,
-        eue_max::Union{Vector{Float64},Matrix{Float64}}, # in powerunits_MWh
-        optimizer,
-        seasonal_constraints::Bool,
-        initial_chronology)
+        chronology::TimeProxyAssignment,
+        riskparams::Vector{EUECuttingPlaneParams},
+        eue_max::Float64, # in powerunits_MWh
+        optimizer)
 
         n_timesteps = length(system.timesteps)
         n_regions = length(system.regions)
 
-        timestepcount(riskparams.times) == n_timesteps ||
+        timestepcount(chronology) == n_timesteps ||
             error("Time period assignment is incompatible with system timesteps")
-
-        if seasonal_constraints
-            size(eue_max, 1) == n_regions ||
-                error("Mismatch between seasonal EUE constraint region count and system regions")
-            size(eue_max, 2) == length(initial_chronology.periods) ||
-                error("Mismatch between seasonal EUE constraint period count and chronology periods")
-        else
-            length(eue_max) == n_regions ||
-                error("Mismatch between EUE constraint count and system regions")
-        end
 
         m = JuMP.direct_model(optimizer)
 
@@ -85,20 +72,16 @@ mutable struct ExpansionProblem
             [InterfaceExpansion(m, i) for i in system.interfaces])
 
         economicdispatch = DispatchSequence(
-            EconomicDispatch, m, builds, riskparams.times)
-
-        reliabilitydispatch = DispatchSequence(
-            ReliabilityDispatch, m, builds, riskparams.times)
+            EconomicDispatch, m, builds, chronology)
 
         reliabilityconstraints = ReliabilityConstraints(
-            m, builds, reliabilitydispatch.dispatches, riskparams, eue_max, seasonal_constraints, initial_chronology)
+            m, builds, riskparams, eue_max)
 
         opex_scalar = 8766 / n_timesteps
 
         @objective(m, Min, cost(builds) + opex_scalar * cost(economicdispatch))
 
-        return new(m, system, builds, economicdispatch,
-                   reliabilitydispatch, reliabilityconstraints)
+        return new(m, system, builds, economicdispatch, reliabilityconstraints)
 
     end
 
@@ -147,7 +130,6 @@ function warmstart_builds!(prob::ExpansionProblem, prev_prob::ExpansionProblem)
 end
 
 
-include("ExpansionAdequacyContext.jl")
 include("export.jl")
 
 end
