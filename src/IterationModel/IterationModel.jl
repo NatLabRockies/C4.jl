@@ -20,7 +20,7 @@ export iterate_ra_cem
 
 function iterate_ra_cem(
     sys::SystemParams, base_chronology::TimeProxyAssignment,
-    max_neues::Union{Vector{Float64},Matrix{Float64}}, optimizer;
+    max_neues::Union{Vector{Float64},Matrix{Float64},Dict{String,Vector{Float64}}}, optimizer;
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
@@ -29,26 +29,21 @@ function iterate_ra_cem(
 
     _chronology = deepcopy(base_chronology)
     persist = length(outfile) > 0
-    max_neue = maximum(max_neues)
     timeout += time()
-
-    annual_demands = [sum(region.demand) for region in sys.regions]
-    annual_eue_factors = annual_demands .* 1e-6
-    max_eues = max_neues .* annual_eue_factors
-
     n_regions = length(sys.regions)
-    n_periods = length(base_chronology.periods)
-    max_eues_by_period = zeros(n_regions, n_periods)
 
-    for p in 1:n_periods
-        represented_ts = represented_timeslices(base_chronology, p)
-
-        for r in 1:n_regions
-            period_demand = sum(sum(sys.regions[r].demand[ts]) for ts in represented_ts)
-            demand_share = annual_demands[r] > 0 ? period_demand / annual_demands[r] : 0.0
-            max_eues_by_period[r, p] = max_eues[r,p] * demand_share
-        end
+    if seasonal_constraints && max_neues isa Matrix{Float64}
+        throw(ArgumentError(
+            "Seasonal constraints with matrix max_neues are order-ambiguous. " *
+            "Pass max_neues as Dict{String,Vector{Float64}} keyed by base_chronology period names."
+        ))
     end
+
+    max_eues, max_eues_by_period, adequacy_limits = eue_limits_from_max_neues(
+        sys,
+        base_chronology,
+        max_neues,
+    )
 
     ram_start = now()
     ram = AdequacyProblem(sys, samples=nsamples)
@@ -114,7 +109,7 @@ function iterate_ra_cem(
 
         show_neues(ram_result)
 
-        is_adequate = all(region_neues(ram_result) .<= max_neues)
+        is_adequate = all(region_neues(ram_result) .<= adequacy_limits)
 
         aug_start = now()
 
@@ -173,6 +168,98 @@ function iterate_ra_cem(
     end
 
     return cem, ram, pcm
+
+end
+
+function eue_limits_from_max_neues(
+    sys::SystemParams,
+    base_chronology::TimeProxyAssignment,
+    max_neues::Union{Vector{Float64},Matrix{Float64},Dict{String,Vector{Float64}}},
+)
+
+    annual_demands = [sum(region.demand) for region in sys.regions]
+    annual_eue_factors = annual_demands .* 1e-6
+
+    n_regions = length(sys.regions)
+    n_periods = length(base_chronology.periods)
+
+    if max_neues isa Vector{Float64}
+        length(max_neues) == n_regions || throw(DimensionMismatch(
+            "max_neues vector length $(length(max_neues)) does not match number of regions $n_regions."
+        ))
+
+        max_eues = max_neues .* annual_eue_factors
+        max_eues_by_period = zeros(n_regions, n_periods)
+
+        for p in 1:n_periods
+            represented_ts = represented_timeslices(base_chronology, p)
+
+            for r in 1:n_regions
+                period_demand = sum(sum(sys.regions[r].demand[ts]) for ts in represented_ts)
+                demand_share = annual_demands[r] > 0 ? period_demand / annual_demands[r] : 0.0
+                max_eues_by_period[r, p] = max_eues[r] * demand_share
+            end
+        end
+
+        adequacy_limits = max_neues
+        return max_eues, max_eues_by_period, adequacy_limits
+    end
+
+    ordered_max_neues = if max_neues isa Matrix{Float64}
+        size(max_neues, 1) == n_regions || throw(DimensionMismatch(
+            "max_neues matrix row count $(size(max_neues, 1)) does not match number of regions $n_regions."
+        ))
+        size(max_neues, 2) == n_periods || throw(DimensionMismatch(
+            "max_neues matrix column count $(size(max_neues, 2)) does not match number of base chronology periods $n_periods."
+        ))
+        max_neues
+    else
+        max_neues_matrix_from_period_dict(max_neues, base_chronology, n_regions)
+    end
+
+    max_eues_by_period = ordered_max_neues .* annual_eue_factors
+    max_eues = vec(sum(max_eues_by_period, dims=2))
+    adequacy_limits = vec(sum(ordered_max_neues, dims=2))
+
+    return max_eues, max_eues_by_period, adequacy_limits
+
+end
+
+function max_neues_matrix_from_period_dict(
+    max_neues::Dict{String,Vector{Float64}},
+    base_chronology::TimeProxyAssignment,
+    n_regions::Int,
+)
+
+    normalized = Dict{String,Vector{Float64}}()
+
+    for (name, values) in max_neues
+        normalized_name = lowercase(strip(name))
+        haskey(normalized, normalized_name) && throw(ArgumentError(
+            "Duplicate period name '$name' after normalization."
+        ))
+        length(values) == n_regions || throw(DimensionMismatch(
+            "max_neues[$name] length $(length(values)) does not match number of regions $n_regions."
+        ))
+        normalized[normalized_name] = values
+    end
+
+    chronology_period_names = lowercase.(strip.([string(period.name) for period in base_chronology.periods]))
+    ordered_max_neues = Matrix{Float64}(undef, n_regions, length(chronology_period_names))
+
+    for (p, name) in enumerate(chronology_period_names)
+        haskey(normalized, name) || throw(ArgumentError(
+            "Period name '$name' from base_chronology.periods is missing from max_neues keys."
+        ))
+        ordered_max_neues[:, p] = normalized[name]
+    end
+
+    extra_names = setdiff(Set(keys(normalized)), Set(chronology_period_names))
+    isempty(extra_names) || throw(ArgumentError(
+        "max_neues contains extra period names not in base_chronology.periods: $(join(sort!(collect(extra_names)), ", "))."
+    ))
+
+    return ordered_max_neues
 
 end
 
