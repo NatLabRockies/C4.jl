@@ -34,7 +34,7 @@ include("build.jl")
 include("riskestimates.jl")
 
 export ExpansionProblem, EUECuttingPlaneParams, warmstart_builds!, solve!,
-       capex, opex, cost, lcoe, nullestimator
+       capex, opex, cost, lcoe
 
 # TODO: Simplify this now that it doesn't need to be abstracted
 const ExpansionEconomicDispatch =
@@ -76,6 +76,43 @@ mutable struct ExpansionProblem
 
         reliabilityconstraints = ReliabilityConstraints(
             m, builds, riskparams, eue_max)
+
+        opex_scalar = 8766 / n_timesteps
+
+        @objective(m, Min, cost(builds) + opex_scalar * cost(economicdispatch))
+
+        return new(m, system, builds, economicdispatch, reliabilityconstraints)
+
+    end
+
+    # ── Seasonal constructor ──────────────────────────────────────────────────
+    # period_riskparams: cutting planes accumulated per initial season, in order
+    #   of base_chronology.periods.  period_maxes: EUE limit per season (MWh).
+    # The current chronology (with added stress periods) drives economic dispatch;
+    # reliability constraints are expressed at the season level.
+    function ExpansionProblem(
+        system::SystemParams,
+        chronology::TimeProxyAssignment,
+        period_riskparams::Vector{Pair{String,Vector{EUECuttingPlaneParams}}},
+        period_maxes::Dict{String,Float64}, # EUE per season, in powerunits_MWh
+        optimizer)
+
+        n_timesteps = length(system.timesteps)
+
+        timestepcount(chronology) == n_timesteps ||
+            error("Time period assignment is incompatible with system timesteps")
+
+        m = JuMP.direct_model(optimizer)
+
+        builds = SystemExpansion(
+            [RegionExpansion(m, r) for r in system.regions],
+            [InterfaceExpansion(m, i) for i in system.interfaces])
+
+        economicdispatch = DispatchSequence(
+            EconomicDispatch, m, builds, chronology)
+
+        reliabilityconstraints = ReliabilityConstraints(
+            m, builds, period_riskparams, period_maxes)
 
         opex_scalar = 8766 / n_timesteps
 
