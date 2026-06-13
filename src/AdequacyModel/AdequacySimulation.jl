@@ -62,7 +62,7 @@ struct AdequacyParams
 
 end
 
-struct DispatchState
+mutable struct DispatchState
 
     n_timesteps::Int
     n_storages::Int
@@ -80,15 +80,13 @@ struct DispatchState
 
     # For incremental addition dual, only ever 0 or discharge_eff, could be bool?
     dEUE_storage_energy::Matrix{Rational{Int}} # n_timesteps x n_storages
-    
-    dEUE_storage_charge_limit::Matrix{Rational{Int}} # n_timesteps x n_storages
-    dEUE_storage_discharge_limit::Matrix{Rational{Int}} # n_timesteps x n_storages
-    dEUE_storage_energy_limit::Matrix{Rational{Int}} # n_timesteps x n_storages
 
+    primal_obj::Rational{Int}
+    dual_obj::Rational{Int}
+    
     function DispatchState(prob::AdequacyParams)
         
         new(
-        
             prob.n_timesteps, prob.n_storages,
             
             Vector{Rational{Int}}(undef, prob.n_timesteps),
@@ -101,11 +99,8 @@ struct DispatchState
             
             Vector{Rational{Int}}(undef, prob.n_timesteps),
             Matrix{Rational{Int}}(undef, prob.n_timesteps, prob.n_storages),
-            
-            Matrix{Rational{Int}}(undef, prob.n_timesteps, prob.n_storages),
-            Matrix{Rational{Int}}(undef, prob.n_timesteps, prob.n_storages),
-            Matrix{Rational{Int}}(undef, prob.n_timesteps, prob.n_storages)
 
+            0, 0
         )
         
     end
@@ -157,30 +152,44 @@ function solve_single!(
     results.n_samples += 1
     # println(state.imbalance_prestorage)
 
+    # First, define all node duals - then calculate edge duals from there?
     for t in 1:prob.n_timesteps
 
         if state.imbalance[t] > 0
             shift_energy_forward!(state, prob, t) # Majority of simulation time spent here now?
         else
-            drawdown_soc!(state, prob, t)
+            drawdown_soc!(state, prob, t) # TODO: Set relevant duals here too
             record_primals!(results, state, t)
+            state.imbalance[t] < 0 && calc_duals_shortfall!(state, prob, t)
         end
 
     end
 
+    @assert all(iszero, state.storage_soc)
+
     for t in prob.n_timesteps:-1:1
 
-        if state.imbalance[t] < 0
-            calc_duals_discharge_shortfall!(state, prob, t)
-        elseif state.imbalance_prestorage[t] < 0
-            calc_duals_discharge_noshortfall!(state, prob, t)
-        else
-            calc_duals_charge!(state, prob, t)
-        end
+        # if state.imbalance[t] < 0
+        #     calc_duals_shortfall_backtrack!(state, prob, t)
+        #     #calc_duals_discharge_shortfall!(state, prob, t)
+        # elseif state.imbalance_prestorage[t] < 0
+        #     calc_duals_discharge_noshortfall!(state, prob, t)
+        # else
+        #     calc_duals_charge!(state, prob, t)
+        # end
 
+        calc_duals_backpass!(state, prob, t)
         backtrack_soc!(state, prob, t)
-        record_duals!(results, state, t)
+        #record_duals!(results, state, t)
 
+    end
+
+    @assert all(iszero, state.storage_soc)
+
+    for t in 1:prob.n_timesteps
+        calc_duals_finalpass!(state, prob, t)
+        advance_soc!(state, prob, t)
+        record_duals!(results, state, prob, t)
     end
 
     check_strong_duality(prob, state)
@@ -191,25 +200,27 @@ end
 
 function check_strong_duality(prob::AdequacyParams, state::DispatchState)
     
-    primal_objval = sum(-sp for sp in state.imbalance if sp < 0; init=0//1)
+    # primal_objval = sum(-sp for sp in state.imbalance if sp < 0; init=0//1)
 
-    dEUE_charge_power = vec(sum(state.dEUE_storage_charge_limit, dims=1))
-    dEUE_discharge_power = vec(sum(state.dEUE_storage_discharge_limit, dims=1))
-    dEUE_energy = vec(sum(state.dEUE_storage_energy_limit, dims=1))
+    # dEUE_charge_power = vec(sum(state.dEUE_storage_charge_limit, dims=1))
+    # dEUE_discharge_power = vec(sum(state.dEUE_storage_discharge_limit, dims=1))
+    # dEUE_energy = vec(sum(state.dEUE_storage_energy_limit, dims=1))
         
-    dual_objval = -sum(
-        dEUE_chg_p * stor.power_capacity +
-        dEUE_dchg_p * stor.power_capacity/stor.discharge_eff +
-        dEUE_e * stor.energy_capacity
-        for (dEUE_chg_p, dEUE_dchg_p, dEUE_e, stor)
-        in zip(dEUE_charge_power, dEUE_discharge_power, dEUE_energy, prob.storages); init=0//1) -
-        sum(state.imbalance_prestorage .* state.dEUE_generator)
+    # dual_objval = -sum(
+    #     dEUE_chg_p * stor.power_capacity +
+    #     dEUE_dchg_p * stor.power_capacity/stor.discharge_eff +
+    #     dEUE_e * stor.energy_capacity
+    #     for (dEUE_chg_p, dEUE_dchg_p, dEUE_e, stor)
+    #     in zip(dEUE_charge_power, dEUE_discharge_power, dEUE_energy, prob.storages); init=0//1) -
+    #     sum(state.imbalance_prestorage .* state.dEUE_generator)
 
-    if primal_objval != dual_objval
-        rel_error = Float64(abs(primal_objval - dual_objval) / primal_objval)
+    if state.primal_obj != state.dual_obj
+        rel_error = Float64(abs(state.primal_obj - state.dual_obj) / state.primal_obj)
         println(prob)
+        println("Power Balance Duals: ", state.dEUE_generator)
+        println("Storage Energy Duals: ", state.dEUE_storage_energy)
         error("Strong duality violation - " *
-              "primal = $primal_objval, dual = $dual_objval, relative error = $rel_error")
+              "primal = $(state.primal_obj), dual = $(state.dual_obj), relative error = $rel_error")
     else
         #println("Strong duality ok")
     end
@@ -223,13 +234,9 @@ function initialize!(state::DispatchState, prob::AdequacyParams, sample_idx::Int
     fill!(state.storage_soc, 0) # Could take this from user
     fill!(state.storage_dispatch, 0)
     
-    fill!(state.dEUE_generator, 0)
-    fill!(state.dEUE_storage_energy, 0)
+    fill!(state.dEUE_generator, -1)
+    fill!(state.dEUE_storage_energy, -1)
     
-    fill!(state.dEUE_storage_charge_limit, 0)
-    fill!(state.dEUE_storage_discharge_limit, 0)
-    fill!(state.dEUE_storage_energy_limit, 0)
-
     return
 
 end
@@ -336,10 +343,11 @@ end
 function shift_energy_forward!(
     state::DispatchState, prob::AdequacyParams, t0::Int)
 
-    surplus_t0 = state.imbalance[t0]
+    surplus_t0 = state.imbalance[t0] # Hasn't been adjusted before now
     
     for (s, stor) in enumerate(prob.storages)
 
+        # Charge energy limited, charge power limited, or reservoir limited?
         max_chargeable_t0 = min(
             surplus_t0, stor.power_capacity,
             (stor.energy_capacity - state.storage_soc[s]) / stor.charge_eff)
@@ -387,6 +395,19 @@ function drawdown_soc!(state::DispatchState, prob::AdequacyParams, t::Int)
     end
 end
 
+function advance_soc!(state::DispatchState, prob::AdequacyParams, t::Int)
+
+    for (s, stor) in enumerate(prob.storages)
+        dispatch = state.storage_dispatch[t,s]
+        if dispatch > 0
+            state.storage_soc[s] -= dispatch / stor.discharge_eff
+        else
+            state.storage_soc[s] -= dispatch * stor.charge_eff
+        end
+    end
+
+end
+
 function backtrack_soc!(state::DispatchState, prob::AdequacyParams, t::Int)
 
     for (s, stor) in enumerate(prob.storages)
@@ -403,131 +424,262 @@ end
 # TODO: The control flow of the next three functions is pretty clunky & likely
 #       not the most efficient, but good enough to prove the concept
 
-function calc_duals_discharge_shortfall!(
+function calc_duals_shortfall!(
     state::DispatchState, prob::AdequacyParams, t::Int)
+
+    state.dEUE_generator[t] = 1
     
-    state.dEUE_generator[t] = 1.
-
     for (s, stor) in enumerate(prob.storages)
-        
         if state.storage_dispatch[t,s] < stor.power_capacity
-            
            state.dEUE_storage_energy[t,s] = stor.discharge_eff
-           
-        elseif state.storage_soc[s] < stor.energy_capacity
-        
-           next_dEUE_storage_energy =
-               t == prob.n_timesteps ? 0 : state.dEUE_storage_energy[t+1, s]
-
-           if next_dEUE_storage_energy > 0
-               state.dEUE_storage_energy[t,s] = next_dEUE_storage_energy
-           else
-               state.dEUE_storage_discharge_limit[t,s] = stor.discharge_eff
-           end
-
-        else
-
-           state.dEUE_storage_discharge_limit[t,s] = stor.discharge_eff
-           state.dEUE_storage_energy_limit[t,s] =
-               t == prob.n_timesteps ? 0 : state.dEUE_storage_energy[t+1, s]
-
         end
-
     end
+    
 
 end
 
-function calc_duals_discharge_noshortfall!(
+function calc_duals_backpass!(
     state::DispatchState, prob::AdequacyParams, t::Int)
 
-    # If the last period has no shortfall, its duals are always zero
-    # (no potential to reduce current or future shortfall)
-    t == prob.n_timesteps && return
-
-    dEUE_max = 0
+    # Skip the last period for now - only possible new incremental value is in
+    # prior charge reversal (direct shortfall avoidance has already been
+    # valued in forward pass), which is priced in the final pass
+    if t == prob.n_timesteps
+        state.dEUE_generator[t] = max(state.dEUE_generator[t], 0)
+        return
+    end
+    
+    charge_period = state.imbalance_prestorage[t] > 0
+    lambda_max = state.dEUE_generator[t]
 
     for (s, stor) in enumerate(prob.storages)
-        
-        next_dEUE_storage_energy = state.dEUE_storage_energy[t+1,s]
-        next_dEUE_storage_energy > 0 || continue
 
-        if state.storage_soc[s] < stor.energy_capacity
+        # Only proceed if current energy value isn't defined yet
+        state.dEUE_storage_energy[t,s] < 0 || continue
 
-            state.dEUE_storage_energy[t,s] = next_dEUE_storage_energy
+        # Only proceed if extra energy could be moved forward
+        state.storage_soc[s] < stor.energy_capacity || continue
 
-            if state.storage_dispatch[t,s] > 0
-                dEUE_max = max(dEUE_max, next_dEUE_storage_energy / stor.discharge_eff)
-            end
+        next_dEUE_storage_energy = state.dEUE_storage_energy[t+1, s]
+
+        # Only proceed if next period's energy value has been defined
+        # If forward path value is zero (only other possibility), stay undefined
+        next_dEUE_storage_energy >= 0 || continue
+
+        state.dEUE_storage_energy[t,s] = next_dEUE_storage_energy
+
+        if charge_period
+            
+            # Only proceed if extra grid energy could be used to charge
+            -state.storage_dispatch[t,s] < stor.power_capacity || continue
+            
+            # This is either RTE or 0 since next_dEUE_storage_energy is either
+            # discharge_eff or zero
+           lambda_max = max(lambda_max, next_dEUE_storage_energy * stor.charge_eff)
 
         else
+        
+            # Only proceed if extra grid energy could be used to reduce discharge
+            state.storage_dispatch[t,s] > 0 || continue
 
-            state.dEUE_storage_energy_limit[t,s] = next_dEUE_storage_energy
+            # This is either 1 or 0 since next_dEUE_storage_energy is either
+            # discharge_eff or zero
+            lambda_max = max(lambda_max, next_dEUE_storage_energy > 0)
 
         end
 
     end
 
-    state.dEUE_generator[t] = dEUE_max
+    state.dEUE_generator[t] = max(lambda_max, 0)
 
-    return
+    # Once lambda is determined, do a second pass to define any undefined
+    # storage energies in terms of discharging more (or charging less?) now
+    # to let another resource charge more / discharge less
+    #
+    # 
+    # Also need to account for discharging more now,
+    # to reduce discharge on another unit
+    # Exact same efficiency as moving energy forward, when that's possible,
+    # so no need to check for both
+    # 
+    for (s, stor) in enumerate(prob.storages)
+
+        # Only proceed if current energy value isn't defined yet
+        state.dEUE_storage_energy[t,s] < 0 || continue
+
+        dEUE_storage = state.dEUE_storage_energy[t,s]
+
+        # Consider value of reducing charging in this period
+        if charge_period && state.storage_dispatch[t,s] < 0
+            dEUE_storage = max(dEUE_storage, state.dEUE_generator[t] / stor.charge_eff)
+        end
+
+        # Consider value of increasing discharging in this period
+        if !charge_period && state.storage_dispatch[t,s] < stor.power_capacity
+            dEUE_storage = max(dEUE_storage, state.dEUE_generator[t] / stor.charge_eff)
+        end
+
+        state.dEUE_storage_energy[t,s] = dEUE_storage
+
+    end
+
 
 end
 
-function calc_duals_charge!(state::DispatchState, prob::AdequacyParams, t::Int)
-
-    # If the last period has no shortfall, its duals are always zero
-    # (no potential to reduce current or future shortfall)
-    t == prob.n_timesteps && return
-
-    dEUE_max = 0
-
-    for (s, stor) in enumerate(prob.storages)
-        
-        next_dEUE_storage_energy = state.dEUE_storage_energy[t+1,s]
-        next_dEUE_storage_energy > 0 || continue
-
-        if state.storage_soc[s] < stor.energy_capacity
-
-            state.dEUE_storage_energy[t,s] = next_dEUE_storage_energy
-
-            if (-state.storage_dispatch[t,s] < stor.power_capacity)
-                dEUE_max = max(dEUE_max, next_dEUE_storage_energy * stor.charge_eff)
-            end
-
-        else
-
-            state.dEUE_storage_energy_limit[t,s] = next_dEUE_storage_energy
-
-        end
-        
-    end
-
-    state.dEUE_generator[t] = dEUE_max
+function calc_duals_finalpass!(
+    state::DispatchState, prob::AdequacyParams, t::Int)
 
     for (s, stor) in enumerate(prob.storages)
 
-        charge_room_energy = state.storage_soc[s] < stor.energy_capacity
-        charge_room_power = -state.storage_dispatch[t,s] < stor.power_capacity
+        # Only proceed if current energy value isn't defined yet
+        state.dEUE_storage_energy[t,s] < 0 || continue
 
-        if charge_room_energy && !charge_room_power &&
-            (state.dEUE_storage_energy[t,s] * stor.charge_eff > dEUE_max)
+        dEUE_storage = 0//1
 
-                state.dEUE_storage_charge_limit[t,s] =
-                    state.dEUE_storage_energy[t,s] * stor.charge_eff - dEUE_max
+        # # Consider value of reducing charging in this period
+        # if state.storage_dispatch[t,s] < 0
+        #     dEUE_storage = max(dEUE_storage, state.dEUE_generator[t] / stor.charge_eff)
+        # end
 
+        # Consider value of reducing energy carried into this period
+        if state.storage_soc[s] > 0
+            prev_dEUE_storage = state.dEUE_storage_energy[t-1, s]
+            dEUE_storage = max(dEUE_storage, prev_dEUE_storage)
         end
 
-    end
+        state.dEUE_storage_energy[t,s] = dEUE_storage
 
-    return
+    end
 
 end
+
+# function calc_duals_discharge_shortfall!(
+#     state::DispatchState, prob::AdequacyParams, t::Int)
+    
+#     state.dEUE_generator[t] = 1.
+
+#     for (s, stor) in enumerate(prob.storages)
+
+#         # if state.storage_dispatch[t,s] < stor.power_capacity
+            
+#         #    state.dEUE_storage_energy[t,s] = stor.discharge_eff
+
+#         if state.storage_soc[s] < stor.energy_capacity
+        
+#            next_dEUE_storage_energy =
+#                t == prob.n_timesteps ? 0 : state.dEUE_storage_energy[t+1, s]
+
+#            if next_dEUE_storage_energy > 0
+#                state.dEUE_storage_energy[t,s] = next_dEUE_storage_energy
+#            else
+#                state.dEUE_storage_discharge_limit[t,s] = stor.discharge_eff
+#            end
+
+#         else
+
+#            state.dEUE_storage_discharge_limit[t,s] = stor.discharge_eff
+#            state.dEUE_storage_energy_limit[t,s] =
+#                t == prob.n_timesteps ? 0 : state.dEUE_storage_energy[t+1, s]
+
+#         end
+
+#     end
+
+# end
+
+# function calc_duals_discharge_noshortfall!(
+#     state::DispatchState, prob::AdequacyParams, t::Int)
+
+#     # If the last period has no shortfall, its duals are always zero
+#     # (no potential to reduce current or future shortfall)
+#     t == prob.n_timesteps && return
+
+#     dEUE_max = 0
+
+#     for (s, stor) in enumerate(prob.storages)
+        
+#         next_dEUE_storage_energy = state.dEUE_storage_energy[t+1,s]
+#         next_dEUE_storage_energy > 0 || continue
+
+#         if state.storage_soc[s] < stor.energy_capacity
+
+#             state.dEUE_storage_energy[t,s] = next_dEUE_storage_energy
+
+#             if state.storage_dispatch[t,s] > 0
+#                 dEUE_max = max(dEUE_max, next_dEUE_storage_energy / stor.discharge_eff)
+#             end
+
+#         else
+
+#             state.dEUE_storage_energy_limit[t,s] = next_dEUE_storage_energy
+
+#         end
+
+#     end
+
+#     state.dEUE_generator[t] = dEUE_max
+
+#     return
+
+# end
+
+# function calc_duals_charge!(state::DispatchState, prob::AdequacyParams, t::Int)
+
+#     # If the last period has no shortfall, its duals are always zero
+#     # (no potential to reduce current or future shortfall)
+#     t == prob.n_timesteps && return
+
+#     dEUE_max = 0
+
+#     for (s, stor) in enumerate(prob.storages)
+        
+#         next_dEUE_storage_energy = state.dEUE_storage_energy[t+1,s]
+#         next_dEUE_storage_energy > 0 || continue
+
+#         if state.storage_soc[s] < stor.energy_capacity
+
+#             state.dEUE_storage_energy[t,s] = next_dEUE_storage_energy
+
+#             if (-state.storage_dispatch[t,s] < stor.power_capacity)
+#                 dEUE_max = max(dEUE_max, next_dEUE_storage_energy * stor.charge_eff)
+#             end
+
+#         else
+
+#             state.dEUE_storage_energy_limit[t,s] = next_dEUE_storage_energy
+
+#         end
+        
+#     end
+
+#     state.dEUE_generator[t] = dEUE_max
+
+#     for (s, stor) in enumerate(prob.storages)
+
+#         charge_room_energy = state.storage_soc[s] < stor.energy_capacity
+#         charge_room_power = -state.storage_dispatch[t,s] < stor.power_capacity
+
+#         if charge_room_energy && !charge_room_power &&
+#             (state.dEUE_storage_energy[t,s] * stor.charge_eff > dEUE_max)
+
+#                 state.dEUE_storage_charge_limit[t,s] =
+#                     state.dEUE_storage_energy[t,s] * stor.charge_eff - dEUE_max
+
+#         end
+
+#     end
+
+#     return
+
+# end
 
 function record_primals!(
     results::ResultAccumulator, state::DispatchState, t::Int)
        
     shortfall = -state.imbalance[t]
-    shortfall < 0 && return
+    shortfall > 0 || return
+    
+    state.primal_obj += shortfall
 
     results.lolps[t] += 1.
     results.eues[t] += shortfall
@@ -536,38 +688,40 @@ function record_primals!(
 
 end
 
-# This is pretty rough on the cache, probably best to either update these all
-# at once at the end of the simulation, or on demand during duals calculation
-# 
-# Note that if we stop storing these explicitly we'll need to store them at
-# each timestep, but that will be much easier on the cache since they won't
-# be spread out in memory across a time dimension
 function record_duals!(
-    results::ResultAccumulator, state::DispatchState, t::Int)
+    results::ResultAccumulator, state::DispatchState, prob::AdequacyParams, t::Int)
 
-    # Should eventually convert these checks to asserts or drop altogether
-
-    state.dEUE_generator[t] < 0 &&
-        error("Negative generation dual ($t, $s): $(state.dEUE_generator[t])")
-
-    results.dEUE_generator[t] += state.dEUE_generator[t]
+    base_imbalance = state.imbalance_prestorage[t]
+    gen_dEUE = state.dEUE_generator[t]
+    charging = base_imbalance > 0
     
-    for s in 1:state.n_storages
-        
-        state.dEUE_storage_charge_limit[t,s] < 0  &&
-            error("Negative charge dual ($t, $s): $(state.dEUE_storage_charge_limit[t,s])")
+    # Should eventually convert these checks to asserts or drop altogether
+    gen_dEUE < 0 &&
+        error("Negative generation dual (t=$t): $(state.dEUE_generator[t])")
 
-        results.dEUE_storage_power[t,s] += state.dEUE_storage_charge_limit[t,s]
-        
-        state.dEUE_storage_discharge_limit[t,s] < 0 &&
-            error("Negative discharge dual ($t, $s): $(state.dEUE_storage_discharge_limit[t,s])")
+    state.dual_obj -= gen_dEUE * base_imbalance
 
-        results.dEUE_storage_power[t,s] += state.dEUE_storage_discharge_limit[t,s]
+    results.dEUE_generator[t] += gen_dEUE
 
-        state.dEUE_storage_energy_limit[t,s] < 0 &&
-            error("Negative energy dual ($t, $s): $(state.dEUE_storage_energy_limit[t,s])")
+    for (s, stor) in enumerate(prob.storages)
 
-        results.dEUE_storage_energy[t,s] += state.dEUE_storage_energy_limit[t,s]
+        energy_dEUE = state.dEUE_storage_energy[t, s]
+        next_energy_dEUE = t == state.n_timesteps ? 0 : state.dEUE_storage_energy[t+1, s]
+
+        stor_energy_dEUE = max(next_energy_dEUE - energy_dEUE, 0)
+        results.dEUE_storage_energy[t,s] += stor_energy_dEUE
+
+        state.dual_obj -= stor_energy_dEUE * stor.energy_capacity
+
+        if charging
+            stor_power_dEUE = max(energy_dEUE * stor.charge_eff - gen_dEUE, 0)
+            results.dEUE_storage_power[t,s] += stor_power_dEUE
+            state.dual_obj -= stor_power_dEUE * stor.power_capacity
+        else
+            stor_power_dEUE = max(gen_dEUE * stor.discharge_eff - energy_dEUE, 0)
+            results.dEUE_storage_power[t,s] += stor_power_dEUE
+            state.dual_obj -= stor_power_dEUE * stor.power_capacity / stor.discharge_eff
+        end
 
     end
 
