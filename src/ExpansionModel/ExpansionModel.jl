@@ -36,10 +36,6 @@ include("riskestimates.jl")
 export ExpansionProblem, EUECuttingPlaneParams, warmstart_builds!, solve!,
        capex, opex, cost, lcoe, nullestimator
 
-# TODO: Simplify this now that it doesn't need to be abstracted
-const ExpansionEconomicDispatch =
-    DispatchSequence{EconomicDispatch{SystemExpansion,RegionExpansion,InterfaceExpansion}}
-
 mutable struct ExpansionProblem
 
     model::JuMP.Model
@@ -48,7 +44,7 @@ mutable struct ExpansionProblem
 
     builds::SystemExpansion
 
-    economicdispatch::ExpansionEconomicDispatch
+    economicdispatch::DispatchSequence{SystemDispatch{SystemExpansion,RegionExpansion,InterfaceExpansion}}
 
     reliabilityconstraints::ReliabilityConstraints
 
@@ -71,8 +67,7 @@ mutable struct ExpansionProblem
             [RegionExpansion(m, r) for r in system.regions],
             [InterfaceExpansion(m, i) for i in system.interfaces])
 
-        economicdispatch = DispatchSequence(
-            EconomicDispatch, m, builds, chronology)
+        economicdispatch = DispatchSequence(m, builds, chronology)
 
         reliabilityconstraints = ReliabilityConstraints(
             m, builds, riskparams, eue_max)

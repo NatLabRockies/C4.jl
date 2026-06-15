@@ -18,16 +18,10 @@ import ..ThermalTechnology, ..VariableTechnology, ..StorageTechnology,
 using ..Data
 
 include("dispatch.jl")
-include("variable.jl")
-
 include("sequencing.jl")
 
-include("economic.jl")
-include("reliability.jl")
-
-export DispatchProblem, EconomicDispatchProblem, ReliabilityDispatchProblem,
-       DispatchSequence, EconomicDispatchSequence, ReliabilityDispatchSequence,
-       EconomicDispatch, ReliabilityDispatch
+# TODO: Will eventually only need DispatchSequence
+export DispatchProblem, DispatchSequence, SystemDispatch
 
 struct DispatchProblem{D<:DispatchSequence}
 
@@ -59,9 +53,6 @@ struct DispatchProblem{D<:DispatchSequence}
     end
 
 end
-
-const EconomicDispatchProblem = DispatchProblem{<:EconomicDispatchSequence}
-const ReliabilityDispatchProblem = DispatchProblem{<:ReliabilityDispatchSequence}
 
 function solve!(prob::DispatchProblem)
 

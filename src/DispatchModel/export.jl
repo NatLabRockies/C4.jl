@@ -6,7 +6,7 @@ import ..store, ..powerunits_MW
 
 # TODO: These should all live in IterationModel/exports.jl
 function store(
-    con::DBInterface.Connection, pcm::EconomicDispatchProblem,
+    con::DBInterface.Connection, pcm::DispatchProblem,
     timings::Pair{DateTime,DateTime}; iter::Int=0)
 
     store(con, pcm.system)
@@ -40,7 +40,7 @@ function DuckDB.close(appender::DispatchAppender)
     return
 end
 
-function store(con::DBInterface.Connection, iter::Int, seq::EconomicDispatchSequence)
+function store(con::DBInterface.Connection, iter::Int, seq::DispatchSequence)
 
     DBInterface.execute(con, "CREATE TABLE IF NOT EXISTS periods (
         iteration INTEGER REFERENCES iterations(id),
@@ -125,7 +125,7 @@ function store(appender::DispatchAppender, iter::Int, period::TimePeriod, reps::
 
 end
 
-function store(appender::DispatchAppender, iter::Int, dispatch::EconomicDispatch)
+function store(appender::DispatchAppender, iter::Int, dispatch::SystemDispatch)
 
     foreach(region -> store(appender, iter, dispatch.period, region), dispatch.regions)
 
@@ -137,7 +137,7 @@ end
 
 function store(
     appender::DispatchAppender, iter::Int, period::TimePeriod,
-    region::RegionEconomicDispatch)
+    region::RegionDispatch)
 
     for (i, t) in enumerate(period.timesteps)
 
@@ -197,7 +197,7 @@ end
 
 function store(
     appender::DispatchAppender, iter::Int, period::TimePeriod,
-    interface::InterfaceDispatch, regions::Vector{<:RegionEconomicDispatch})
+    interface::InterfaceDispatch, regions::Vector{<:RegionDispatch})
 
     r_from = name(regions[region_from(interface)])
     r_to = name(regions[region_to(interface)])

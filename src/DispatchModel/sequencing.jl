@@ -94,16 +94,13 @@ struct DispatchSequence{D <: SystemDispatch}
     dispatches::Vector{D}
     recurrences::Vector{DispatchRecurrence{D}}
 
-    # This is a bit hacky, we want to call EconomicDispatch to generate the
-    # list of dispatches, but need to parametrize the result with
-    # EconomicDispatch{S,R,I}.
     function DispatchSequence(
-        f::Type{D}, m::JuMP.Model, system::S, time::TimeProxyAssignment, voll::Float64=NaN
-    ) where {R, I, D <: SystemDispatch, S <: System{R,I}}
+        m::JuMP.Model, system::S, time::TimeProxyAssignment, voll::Float64=NaN
+    ) where {R, I, S <: System{R,I}}
 
-        dispatches = [f(m, system, period, voll) for period in time.periods]
+        dispatches = [SystemDispatch(m, system, period, voll) for period in time.periods]
         recurrences = sequence_recurrences(m, system, dispatches, time)
-        new{D{S,R,I}}(time, dispatches, recurrences)
+        new{SystemDispatch{S,R,I}}(time, dispatches, recurrences)
 
     end
 
