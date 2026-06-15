@@ -6,15 +6,14 @@ struct ThermalDispatch{G<:ThermalTechnology}
     tech::G
 
     function ThermalDispatch(
-        m::JuMP.Model, region::Region,
-        tech::G, period::TimePeriod
+        m::JuMP.Model, tech::G, period::TimePeriod
     ) where G <: ThermalTechnology
 
         T = length(period)
         ts = period.timesteps
 
         dispatch = @variable(m, [1:T], lower_bound = 0)
-        fullname = join([name(region), name(tech), period.name], ",")
+        fullname = join([name(tech), period.name], ",")
         varnames!(dispatch, "tech_dispatch[$(fullname)]", 1:T)
 
         dispatch_max = @constraint(m, [t in 1:T],
@@ -52,17 +51,16 @@ struct StorageDispatch{S<:StorageTechnology}
     stor::S
 
     function StorageDispatch(
-        m::JuMP.Model, region::Region, stor::S,
-        period::TimePeriod) where S <: StorageTechnology
+        m::JuMP.Model, stor::S, period::TimePeriod) where S <: StorageTechnology
 
         T = length(period)
 
         charge = @variable(m, [1:T], lower_bound = 0)
-        fullname = join([name(region), name(stor), period.name], ",")
+        fullname = join([name(stor), period.name], ",")
         varnames!(charge, "stor_charge[$(fullname)]", 1:T)
 
         discharge = @variable(m, [1:T], lower_bound = 0)
-        fullname = join([name(region), name(stor), period.name], ",")
+        fullname = join([name(stor), period.name], ",")
         varnames!(discharge, "stor_discharge[$(fullname)]", 1:T)
 
         capacity = maxpower(stor)
@@ -109,15 +107,14 @@ struct VariableDispatch{V<:VariableTechnology}
     tech::V
 
     function VariableDispatch(
-        m::JuMP.Model, region::Region,
-        tech::V, period::TimePeriod
+        m::JuMP.Model, tech::V, period::TimePeriod
     ) where V <: VariableTechnology
 
         T = length(period)
         ts = period.timesteps
 
         dispatch = @variable(m, [1:T], lower_bound = 0)
-        fullname = join([name(region), name(tech), period.name], ",")
+        fullname = join([name(tech), period.name], ",")
         varnames!(dispatch, "tech_dispatch[$(fullname)]", 1:T)
 
         dispatch_max = @constraint(m, [t in 1:T],
@@ -132,143 +129,62 @@ end
 cost(dispatch::VariableDispatch) =
     sum(dispatch.dispatch) * cost_generation(dispatch.tech)
 
-# TODO: Where is this used?
 name(dispatch::VariableDispatch) = name(dispatch.tech)
 
-struct InterfaceDispatch{I<:Interface}
 
-    flow::Vector{JuMP.VariableRef}
+struct SystemDispatch{S<:System}
 
-    flow_min::Vector{JuMP_GreaterThanConstraintRef}
-    flow_max::Vector{JuMP_LessThanConstraintRef}
+    period::TimePeriod
 
-    iface::I
-
-    function InterfaceDispatch(
-        m::JuMP.Model, iface::I, period::TimePeriod) where I <: Interface
-
-        T = length(period)
-
-        flow = @variable(m, [1:T])
-        varnames!(flow, "iface_flow[$(name(iface)),$(period.name)]", 1:T)
-
-        capacity = availablecapacity(iface)
-        flow_min = @constraint(m, [t in 1:T], flow[t] >= -capacity)
-        flow_max = @constraint(m, [t in 1:T], flow[t] <= capacity)
-
-        return new{I}(flow, flow_min, flow_max, iface)
-
-    end
-
-end
-
-region_from(iface::InterfaceDispatch) = region_from(iface.iface)
-region_to(iface::InterfaceDispatch) = region_to(iface.iface)
-
-struct RegionDispatch{R<:Region, I<:Interface}
-
-     # Note these vectors are heterogenously typed
     thermaltechs::Vector{ThermalDispatch}
     variabletechs::Vector{VariableDispatch}
     storagetechs::Vector{StorageDispatch}
 
-    netload::Vector{JuMP_ExpressionRef}
     unserved_energy::Union{Vector{JuMP.VariableRef},Nothing}
     voll::Float64
 
-    import_interfaces::Vector{InterfaceDispatch{I}}
-    export_interfaces::Vector{InterfaceDispatch{I}}
-
-    region::R
-
-    function RegionDispatch(
-        m::JuMP.Model,
-        region::R,
-        interfaces::Vector{InterfaceDispatch{I}},
-        period::TimePeriod, voll::Float64
-    ) where {I, R<:Region{I} }
-
-        T = length(period)
-        ts = period.timesteps
-
-        thermaldispatch = [ThermalDispatch(m, region, tech, period)
-                           for tech in thermaltechs(region)]
-
-        variabledispatch = [VariableDispatch(m, region, tech, period)
-                            for tech in variabletechs(region)]
-
-        storagedispatch = [StorageDispatch(m, region, tech, period)
-                           for tech in storagetechs(region)]
-
-        unserved_energy = isnan(voll) ? nothing : @variable(m, [1:T], lower_bound=0)
-
-        netload = @expression(m, [t in 1:T],
-                demand(region, ts[t])
-                - sum(gen.dispatch[t] for gen in thermaldispatch)
-                - sum(gen.dispatch[t] for gen in variabledispatch)
-                - sum(stor.dispatch[t] for stor in storagedispatch)
-                - (isnan(voll) ? 0 : unserved_energy[t]))
-
-        import_interfaces = [interfaces[i] for i in importinginterfaces(region)]
-        export_interfaces = [interfaces[i] for i in exportinginterfaces(region)]
-
-        new{R,I}(
-            thermaldispatch, variabledispatch, storagedispatch,
-            netload, unserved_energy, voll,
-            import_interfaces, export_interfaces, region)
-
-    end
-
-end
-
-cost(dispatch::RegionDispatch) =
-    sum(cost(thermaltech) for thermaltech in dispatch.thermaltechs; init=0) +
-    sum(cost(variabletech) for variabletech in dispatch.variabletechs; init=0) +
-    sum(cost(storagetech) for storagetech in dispatch.storagetechs; init=0) +
-    (isnan(dispatch.voll) ? 0 : sum(dispatch.unserved_energy) * (dispatch.voll * powerunits_MW))
-
-name(dispatch::RegionDispatch) = name(dispatch.region)
-demand(dispatch::RegionDispatch, t::Int) = demand(dispatch.region, t)
-
-struct SystemDispatch{S<:System, R<:Region, I<:Interface}
-
-    period::TimePeriod
-
-    regions::Vector{RegionDispatch{R,I}}
-    interfaces::Vector{InterfaceDispatch{I}}
-
-    netimports::Matrix{JuMP_ExpressionRef}
-    powerbalance::Matrix{JuMP_EqualToConstraintRef}
+    powerbalance::Vector{JuMP_EqualToConstraintRef}
 
     system::S
 
     function SystemDispatch(
         m::JuMP.Model, system::S, period::TimePeriod, voll::Float64
-    ) where { R<:Region, I<:Interface, S<:System{R,I} }
+    ) where { S <: System }
 
         n_timesteps = length(period)
-        n_regions = length(system.regions)
+        ts = period.timesteps
 
-        interfaces = [InterfaceDispatch(m, iface, period)
-                   for iface in system.interfaces]
+        thermaldispatch = [ThermalDispatch(m, tech, period)
+                           for tech in thermaltechs(system)]
 
-        regions = [RegionDispatch(m, region, interfaces, period, voll)
-                   for region in system.regions]
+        variabledispatch = [VariableDispatch(m, tech, period)
+                            for tech in variabletechs(system)]
 
-        netimports = @expression(m, [r in 1:n_regions, t in 1:n_timesteps],
-           sum(iface.flow[t] for iface in regions[r].import_interfaces) -
-           sum(iface.flow[t] for iface in regions[r].export_interfaces)
-        )
+        storagedispatch = [StorageDispatch(m, tech, period)
+                           for tech in storagetechs(system)]
 
-        powerbalance = @constraint(m, [r in 1:n_regions, t in 1:n_timesteps],
-            regions[r].netload[t] == netimports[r,t])
+        unserved_energy = isnan(voll) ? nothing : @variable(m, [1:n_timesteps], lower_bound=0)
 
-        new{S,R,I}(period, regions, interfaces, netimports,
-                   powerbalance, system)
+        powerbalance = @constraint(m, [t in 1:n_timesteps],
+                demand(system, ts[t]) ==
+                sum(gen.dispatch[t] for gen in thermaldispatch)
+                + sum(gen.dispatch[t] for gen in variabledispatch)
+                + sum(stor.dispatch[t] for stor in storagedispatch)
+                + (isnan(voll) ? 0 : unserved_energy[t]))
+
+        new{S}(period, thermaldispatch, variabledispatch, storagedispatch,
+               unserved_energy, voll, powerbalance, system)
 
     end
 
 end
 
+name(dispatch::SystemDispatch) = name(dispatch.system)
+
+demand(dispatch::SystemDispatch, t::Int) = demand(dispatch.system, t)
+
 cost(dispatch::SystemDispatch) =
-    sum(cost(region) for region in dispatch.regions; init=0)
+    sum(cost(thermaltech) for thermaltech in dispatch.thermaltechs; init=0) +
+    sum(cost(variabletech) for variabletech in dispatch.variabletechs; init=0) +
+    sum(cost(storagetech) for storagetech in dispatch.storagetechs; init=0) +
+    (isnan(dispatch.voll) ? 0 : sum(dispatch.unserved_energy) * (dispatch.voll * powerunits_MW))

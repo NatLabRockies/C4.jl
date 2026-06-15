@@ -83,29 +83,6 @@ function maxpower end
 function operating_cost end
 function roundtrip_efficiency end
 
-abstract type Interface end
-function region_from end
-function region_to end
-
-"""
-Region is an abstract type that can be used to instantiate
-dispatch problems. Instances of Region should define:
-```
-name(::Region)
-demand(::Region, t::Int)
-thermaltechs(::Region) -> Vector{ThermalTechnology}
-variabletechs(::Region) -> Vector{VariableTechnology}
-storagetechs(::Region) -> Vector{StorageTechnology}
-```
-"""
-abstract type Region{I<:Interface} end
-
-function demand end
-function thermaltechs end
-function variabletechs end
-function storagetechs end
-function importinginterfaces end
-function exportinginterfaces end
 
 function cost end
 
@@ -113,4 +90,20 @@ function solve! end
 
 function store end
 
-abstract type System{R<:Region, I<:Interface} end
+"""
+System is an abstract type that can be used to instantiate
+dispatch problems. Instances of System should define:
+```
+name(::System)
+demand(::System, t::Int)
+thermaltechs(::System) -> Vector{ThermalTechnology}
+variabletechs(::System) -> Vector{VariableTechnology}
+storagetechs(::System) -> Vector{StorageTechnology}
+```
+"""
+abstract type System end
+
+function demand end
+function thermaltechs end
+function variabletechs end
+function storagetechs end

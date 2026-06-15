@@ -92,25 +92,8 @@ end
 
 byyear(f::Function) = (dt -> f(dt) * " " * string(year(dt)))
 
-function num_features(sys::SystemParams)
-
-    techs = Set{String}()
-
-    for region in sys.regions
-
-        for tech in region.variabletechs_existing
-            push!(techs, tech.name)
-        end
-
-        for tech in region.variabletechs_candidate
-            push!(techs, tech.name)
-        end
-
-    end
-
-    return length(techs) + 1 # One extra feature for demand
-
-end
+num_features(sys::SystemParams) =
+    length(sys.variabletechs_existing) + length(sys.variabletechs_candidate) + 1
 
 """
 Feature vector of average capacity factor for each technology
@@ -121,35 +104,32 @@ function extract_features(sys::SystemParams, n_features::Int, ts::UnitRange{Int}
     demand = 0.
     tech_cfs = Dict{String,Vector{Float64}}()
 
-    for region in sys.regions
+    demand += mean(sys.demand[ts])
 
-        demand += mean(region.demand[ts])
+    for tech in sys.variabletechs_existing
 
-        for tech in region.variabletechs_existing
+        haskey(tech_cfs, tech.name) ||
+            (tech_cfs[tech.name] = Float64[])
 
-            haskey(tech_cfs, tech.name) ||
-                (tech_cfs[tech.name] = Float64[])
-
-            for site in tech.sites
-                site_cf = mean(site.availability[ts])
-                push!(tech_cfs[tech.name], site_cf)
-            end
-
-        end
-
-        for tech in region.variabletechs_candidate
-
-            haskey(tech_cfs, tech.name) ||
-                (tech_cfs[tech.name] = Float64[])
-
-            for site in tech.sites
-                site_cf = mean(site.availability[ts])
-                push!(tech_cfs[tech.name], site_cf)
-            end
-
+        for site in tech.sites
+            site_cf = mean(site.availability[ts])
+            push!(tech_cfs[tech.name], site_cf)
         end
 
     end
+
+    for tech in sys.variabletechs_candidate
+
+        haskey(tech_cfs, tech.name) ||
+            (tech_cfs[tech.name] = Float64[])
+
+        for site in tech.sites
+            site_cf = mean(site.availability[ts])
+            push!(tech_cfs[tech.name], site_cf)
+        end
+
+    end
+
 
     features = [tech => mean(site_cfs) for (tech, site_cfs) in tech_cfs]
     push!(features, "avg_demand" => demand)

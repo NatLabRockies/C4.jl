@@ -1,3 +1,2 @@
-region,tech,category,cost_generation
-A,Wind,wind,0
-B,Solar PV,pv,0
+tech,category,cost_generation
+Wind,wind,0

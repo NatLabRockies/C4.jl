@@ -3,8 +3,7 @@ module AdequacyModel
 import Dates: DateTime, Hour
 
 using ..Data
-import ..powerunits_MW, ..ThermalTechnology, ..Region,
-       ..maxpower, ..maxenergy
+import ..powerunits_MW, ..ThermalTechnology, ..maxpower, ..maxenergy
 
 export AdequacyProblem, AdequacyResult, solve, neue, show_neues
 

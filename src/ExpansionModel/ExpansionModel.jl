@@ -7,19 +7,17 @@ import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
         ..JuMP_ExpressionRef,
         ..Site, ..VariableSite,
         ..ThermalTechnology, ..VariableTechnology, ..StorageTechnology,
-        ..Interface, ..Region, ..System, ..varnames!,
+        ..System, ..varnames!,
         ..nameplatecapacity, ..availablecapacity, ..availability, ..maxpower, ..maxenergy,
         ..roundtrip_efficiency, ..operating_cost,
         ..name, ..variabletechs, ..storagetechs, ..thermaltechs,
         ..sites, ..cost, ..cost_generation,
-        ..region_from, ..region_to,
-        ..demand, ..importinginterfaces, ..exportinginterfaces, ..solve!
+        ..demand, ..solve!
 
 import ..Data: ThermalExistingParams, ThermalCandidateParams,
                VariableExistingParams, VariableExistingSiteParams,
                VariableCandidateParams, VariableCandidateSiteParams,
-               StorageExistingParams, StorageCandidateParams,
-               SystemParams, RegionParams, InterfaceParams
+               StorageExistingParams, StorageCandidateParams, SystemParams
 
 using ..Data
 using ..AdequacyModel
@@ -44,7 +42,7 @@ mutable struct ExpansionProblem
 
     builds::SystemExpansion
 
-    economicdispatch::DispatchSequence{SystemDispatch{SystemExpansion,RegionExpansion,InterfaceExpansion}}
+    economicdispatch::DispatchSequence{SystemExpansion}
 
     reliabilityconstraints::ReliabilityConstraints
 
@@ -56,16 +54,13 @@ mutable struct ExpansionProblem
         optimizer)
 
         n_timesteps = length(system.timesteps)
-        n_regions = length(system.regions)
 
         timestepcount(chronology) == n_timesteps ||
             error("Time period assignment is incompatible with system timesteps")
 
         m = JuMP.direct_model(optimizer)
 
-        builds = SystemExpansion(
-            [RegionExpansion(m, r) for r in system.regions],
-            [InterfaceExpansion(m, i) for i in system.interfaces])
+        builds = SystemExpansion(m, system)
 
         economicdispatch = DispatchSequence(m, builds, chronology)
 
@@ -79,6 +74,41 @@ mutable struct ExpansionProblem
         return new(m, system, builds, economicdispatch, reliabilityconstraints)
 
     end
+
+end
+
+function SystemParams(prob::ExpansionProblem)
+
+    params = prob.system
+    build = prob.builds
+
+    thermal_existing = vcat(
+            [ThermalExistingParams(tech)
+             for tech in build.thermaltechs
+             if value(nameplatecapacity(tech)) > 0],
+            params.thermaltechs_existing)
+
+    variable_existing = vcat(
+            [VariableExistingParams(tech)
+             for tech in build.variabletechs
+             if value(nameplatecapacity(tech)) > 0],
+            params.variabletechs_existing)
+
+    # We leave in all storage resources (whether built or not)
+    # in order to simplify extracting marginal EUE reductions from
+    # PRAS results later
+    storage_existing = vcat(
+            [StorageExistingParams(tech) for tech in build.storagetechs],
+            params.storagetechs_existing)
+
+    return SystemParams(
+        params.name, params.timesteps, params.demand,
+        thermal_existing,
+        ThermalCandidateParams.(build.thermaltechs),
+        variable_existing,
+        VariableCandidateParams.(build.variabletechs),
+        storage_existing,
+        StorageCandidateParams.(build.storagetechs))
 
 end
 
@@ -113,14 +143,10 @@ function lcoe(prob::ExpansionProblem)
 
 end
 
-SystemParams(prob::ExpansionProblem) = SystemParams(
-    prob.system.name, prob.system.timesteps,
-    RegionParams.(prob.builds.regions), InterfaceParams.(prob.builds.interfaces)
-)
-
 function warmstart_builds!(prob::ExpansionProblem, prev_prob::ExpansionProblem)
-    warmstart_builds!.(prob.builds.regions, prev_prob.builds.regions)
-    warmstart_builds!.(prob.builds.interfaces, prev_prob.builds.interfaces)
+    warmstart_builds!.(prob.builds.thermaltechs, prev_prob.builds.thermaltechs)
+    warmstart_builds!.(prob.builds.variabletechs, prev_prob.builds.variabletechs)
+    warmstart_builds!.(prob.builds.storagetechs, prev_prob.builds.storagetechs)
     return
 end
 

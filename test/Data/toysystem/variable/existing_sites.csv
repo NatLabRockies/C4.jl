@@ -1,3 +1,2 @@
-region,tech,site,capacity
-A,Wind,,10
-B,Solar PV,,5
+tech,site,capacity
+Wind,,10

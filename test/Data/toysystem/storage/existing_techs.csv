@@ -1,2 +1,1 @@
-region,tech,category,duration,cost_operation,roundtrip_efficiency
-B,Lithium Ion,Lithium Ion Battery,4,0,0.85
+tech,category,duration,cost_operation,roundtrip_efficiency

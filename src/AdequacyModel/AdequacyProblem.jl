@@ -7,7 +7,7 @@ struct AdequacyProblem
 
     function AdequacyProblem(sys::SystemParams; samples::Int)
 
-        demand = sys.regions[1].demand .* powerunits_MW
+        demand = sys.demand .* powerunits_MW
 
         generators_capacity, generators_lambda, generators_mu =
             load_generators(sys)
@@ -29,7 +29,6 @@ function load_generators(sys::SystemParams)
 
     n_timesteps = length(sys.timesteps)
     n_gens, has_variable = count_gens(sys)
-    region = first(sys.regions)
 
     generators_capacity = Matrix{Float64}(undef, n_gens, n_timesteps)
     generators_lambda = Matrix{Float64}(undef, n_timesteps, n_gens)
@@ -37,7 +36,7 @@ function load_generators(sys::SystemParams)
 
     g_last = 0
 
-    for tech in region.thermaltechs_existing
+    for tech in sys.thermaltechs_existing
         for site in tech.sites
             for _ in 1:site.units
                 g_last += 1
@@ -53,7 +52,7 @@ function load_generators(sys::SystemParams)
 
         variable_capacity = zeros(n_timesteps)
 
-        for tech in region.variabletechs_existing
+        for tech in sys.variabletechs_existing
             for site in tech.sites
                 variable_capacity .+= site.capacity .* powerunits_MW .* site.availability
             end
@@ -77,16 +76,15 @@ VRE across all techs and sites within a region is pooled.
 """
 function count_gens(sys::SystemParams)
 
-    region = first(sys.regions)
     n_gens = 0
 
-    for tech in region.thermaltechs_existing
+    for tech in sys.thermaltechs_existing
         for site in tech.sites
             n_gens += site.units
         end
     end
 
-    has_variable = length(region.variabletechs_existing) > 0
+    has_variable = length(sys.variabletechs_existing) > 0
 
     n_gens += has_variable
 
@@ -96,18 +94,17 @@ end
 
 function load_storages(sys::SystemParams)
 
-    region = first(sys.regions)
-    n_storages = length(region.storagetechs_existing)
+    n_storages = length(sys.storagetechs_existing)
 
     storages = Vector{StorageParams}(undef, n_storages)
     s_last = 0
 
     stor_perm = sortperm(
-        region.storagetechs_existing, by=(x -> x.roundtrip_efficiency), rev=true)
+        sys.storagetechs_existing, by=(x -> x.roundtrip_efficiency), rev=true)
 
     for (s_idx, s) in enumerate(stor_perm)
 
-        stor = region.storagetechs_existing[s]
+        stor = sys.storagetechs_existing[s]
         oneway_eff = sqrt(stor.roundtrip_efficiency)
 
         storages[s_idx] = StorageParams(

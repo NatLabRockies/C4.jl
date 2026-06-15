@@ -1,6 +1,3 @@
-region,tech,site,capacity_max
-A,New Wind,,90
-C,New Wind,,100
-A,New Solar PV,,100
-B,New Solar PV,,95
-C,New Solar PV,,100
+tech,site,capacity_max
+New Wind,,90
+New Solar PV,,100

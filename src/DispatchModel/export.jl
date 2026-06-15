@@ -4,7 +4,9 @@ import Dates: DateTime
 
 import ..store, ..powerunits_MW
 
-# TODO: These should all live in IterationModel/exports.jl
+"""
+Standalone DispatchProblem persistence (not invoked by IterationModel)
+"""
 function store(
     con::DBInterface.Connection, pcm::DispatchProblem,
     timings::Pair{DateTime,DateTime}; iter::Int=0)
@@ -21,13 +23,11 @@ struct DispatchAppender
     periods::DuckDB.Appender
     demands::DuckDB.Appender
     dispatches::DuckDB.Appender
-    flows::DuckDB.Appender
 
     DispatchAppender(con::DuckDB.DB) = new(
         DuckDB.Appender(con, "periods"),
         DuckDB.Appender(con, "demands"),
-        DuckDB.Appender(con, "dispatches"),
-        DuckDB.Appender(con, "flows")
+        DuckDB.Appender(con, "dispatches")
     )
 
 end
@@ -36,7 +36,6 @@ function DuckDB.close(appender::DispatchAppender)
     DuckDB.close(appender.periods)
     DuckDB.close(appender.demands)
     DuckDB.close(appender.dispatches)
-    DuckDB.close(appender.flows)
     return
 end
 
@@ -55,10 +54,9 @@ function store(con::DBInterface.Connection, iter::Int, seq::DispatchSequence)
         iteration INTEGER,
         period TEXT,
         timestep INTEGER,
-        region TEXT REFERENCES regions(region),
         load DOUBLE,
         FOREIGN KEY (iteration, period) REFERENCES periods (iteration, period),
-        PRIMARY KEY (iteration, period, timestep, region)
+        PRIMARY KEY (iteration, period, timestep)
     )")
 
     DBInterface.execute(con, "CREATE TABLE IF NOT EXISTS dispatches (
@@ -66,23 +64,10 @@ function store(con::DBInterface.Connection, iter::Int, seq::DispatchSequence)
         period TEXT,
         timestep INTEGER,
         tech TEXT,
-        region TEXT,
         dispatch DOUBLE,
         FOREIGN KEY (iteration, period) REFERENCES periods (iteration, period),
-        FOREIGN KEY (tech, region) REFERENCES techs (tech, region),
-        PRIMARY KEY (iteration, period, timestep, tech, region)
-    )")
-
-    DBInterface.execute(con, "CREATE TABLE IF NOT EXISTS flows (
-        iteration INTEGER,
-        period TEXT,
-        timestep INTEGER,
-        region_from TEXT,
-        region_to TEXT,
-        flow DOUBLE,
-        FOREIGN KEY (iteration, period) REFERENCES periods (iteration, period),
-        FOREIGN KEY (region_from, region_to) REFERENCES interfaces (region_from, region_to),
-        PRIMARY KEY (iteration, period, timestep, region_from, region_to)
+        FOREIGN KEY (tech) REFERENCES techs (tech),
+        PRIMARY KEY (iteration, period, timestep, tech)
     )")
 
     appender = DispatchAppender(con)
@@ -93,17 +78,18 @@ function store(con::DBInterface.Connection, iter::Int, seq::DispatchSequence)
     DuckDB.close(appender)
 
     DBInterface.execute(con, "CREATE VIEW IF NOT EXISTS summary_generation AS
-        SELECT iteration, period, tech, region, sum(dispatch) as generation from dispatches group by iteration, period, tech, region
+        SELECT iteration, period, tech, sum(dispatch) AS generation
+        FROM dispatches GROUP BY iteration, period, tech
     ")
 
     DBInterface.execute(con, "CREATE VIEW IF NOT EXISTS summary_generation_scaled AS
-        SELECT iteration, period, tech, region, generation*reps as generation
+        SELECT iteration, period, tech, generation*reps AS generation
         FROM summary_generation JOIN periods USING (iteration, period);
     ")
 
     DBInterface.execute(con, "CREATE VIEW IF NOT EXISTS summary_opex AS
-        SELECT iteration, period, tech, region, cost_generation * generation AS opex
-        FROM summary_generation_scaled JOIN techs USING (tech, region);
+        SELECT iteration, period, tech, cost_generation * generation AS opex
+        FROM summary_generation_scaled JOIN techs USING (tech);
     ")
 
 end
@@ -125,94 +111,54 @@ function store(appender::DispatchAppender, iter::Int, period::TimePeriod, reps::
 
 end
 
-function store(appender::DispatchAppender, iter::Int, dispatch::SystemDispatch)
+function store(appender::DispatchAppender, iter::Int, system::SystemDispatch)
 
-    foreach(region -> store(appender, iter, dispatch.period, region), dispatch.regions)
-
-    foreach(interface ->
-                store(appender, iter, dispatch.period, interface, dispatch.regions),
-            dispatch.interfaces)
-
-end
-
-function store(
-    appender::DispatchAppender, iter::Int, period::TimePeriod,
-    region::RegionDispatch)
-
-    for (i, t) in enumerate(period.timesteps)
+    for (i, t) in enumerate(system.period.timesteps)
 
         DuckDB.append(appender.demands, iter)
-        DuckDB.append(appender.demands, period.name)
+        DuckDB.append(appender.demands, system.period.name)
         DuckDB.append(appender.demands, i)
-        DuckDB.append(appender.demands, name(region))
-        DuckDB.append(appender.demands, demand(region, t) * powerunits_MW)
+        DuckDB.append(appender.demands, demand(system, t) * powerunits_MW)
         DuckDB.end_row(appender.demands)
 
-        for gen in region.thermaltechs
+        for gen in system.thermaltechs
 
             dispatch = value(gen.dispatch[i]) * powerunits_MW
 
             DuckDB.append(appender.dispatches, iter)
-            DuckDB.append(appender.dispatches, period.name)
+            DuckDB.append(appender.dispatches, system.period.name)
             DuckDB.append(appender.dispatches, i)
             DuckDB.append(appender.dispatches, name(gen))
-            DuckDB.append(appender.dispatches, name(region))
             DuckDB.append(appender.dispatches, dispatch)
             DuckDB.end_row(appender.dispatches)
 
         end
 
-        for gen in region.variabletechs
+        for gen in system.variabletechs
 
             dispatch = value(gen.dispatch[i]) * powerunits_MW
 
             DuckDB.append(appender.dispatches, iter)
-            DuckDB.append(appender.dispatches, period.name)
+            DuckDB.append(appender.dispatches, system.period.name)
             DuckDB.append(appender.dispatches, i)
             DuckDB.append(appender.dispatches, name(gen))
-            DuckDB.append(appender.dispatches, name(region))
             DuckDB.append(appender.dispatches, dispatch)
             DuckDB.end_row(appender.dispatches)
 
         end
 
-
-        for stor in region.storagetechs
+        for stor in system.storagetechs
 
             dispatch = value(stor.dispatch[i]) * powerunits_MW
 
             DuckDB.append(appender.dispatches, iter)
-            DuckDB.append(appender.dispatches, period.name)
+            DuckDB.append(appender.dispatches, system.period.name)
             DuckDB.append(appender.dispatches, i)
             DuckDB.append(appender.dispatches, name(stor))
-            DuckDB.append(appender.dispatches, name(region))
             DuckDB.append(appender.dispatches, dispatch)
             DuckDB.end_row(appender.dispatches)
 
         end
-
-    end
-
-end
-
-function store(
-    appender::DispatchAppender, iter::Int, period::TimePeriod,
-    interface::InterfaceDispatch, regions::Vector{<:RegionDispatch})
-
-    r_from = name(regions[region_from(interface)])
-    r_to = name(regions[region_to(interface)])
-
-    for (i, t) in enumerate(period.timesteps)
-
-        flow = value(interface.flow[i]) * powerunits_MW
-
-        DuckDB.append(appender.flows, iter)
-        DuckDB.append(appender.flows, period.name)
-        DuckDB.append(appender.flows, i)
-        DuckDB.append(appender.flows, r_from)
-        DuckDB.append(appender.flows, r_to)
-        DuckDB.append(appender.flows, flow)
-        DuckDB.end_row(appender.flows)
 
     end
 

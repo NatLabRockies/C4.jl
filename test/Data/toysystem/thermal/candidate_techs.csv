@@ -1,7 +1,3 @@
-region,tech,category,cost_capital,cost_generation,unit_size,max_units
-A,New Gas CT,Gas CT,80000,30,55,10
-B,New Gas CT,Gas CT,80000,30,55,10
-C,New Gas CT,Gas CT,80000,30,55,10
-A,New Gas CC,Gas CC,93400,20,355,10
-B,New Gas CC,Gas CC,93400,20,355,10
-C,New Gas CC,Gas CC,93400,20,355,10
+tech,category,cost_capital,cost_generation,unit_size,max_units
+New Gas CT,Gas CT,80000,30,55,10
+New Gas CC,Gas CC,93400,20,355,10

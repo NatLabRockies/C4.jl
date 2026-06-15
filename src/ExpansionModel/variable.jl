@@ -5,10 +5,9 @@ struct VariableSiteExpansion <: VariableSite
 
     function VariableSiteExpansion(
         m::JuMP.Model, siteparams::VariableCandidateSiteParams,
-        techparams::VariableCandidateParams, regionparams::RegionParams
-    )
+        techparams::VariableCandidateParams)
 
-        fullname = join([regionparams.name, techparams.name, siteparams.name], ",")
+        fullname = join([techparams.name, siteparams.name], ",")
         capacity_new = @variable(m, lower_bound=0, upper_bound=siteparams.capacity_max)
         JuMP.set_name(capacity_new, "variable_new_capacity[$fullname]")
         new(siteparams, capacity_new)
@@ -45,10 +44,9 @@ struct VariableExpansion <: VariableTechnology
     sites::Vector{VariableSiteExpansion}
 
     function VariableExpansion(
-        m::JuMP.Model, techparams::VariableCandidateParams, regionparams::RegionParams
-    )
+        m::JuMP.Model, techparams::VariableCandidateParams)
 
-        sites = [VariableSiteExpansion(m, siteparams, techparams, regionparams)
+        sites = [VariableSiteExpansion(m, siteparams, techparams)
                  for siteparams in techparams.sites]
 
         new(techparams, sites)

@@ -79,13 +79,17 @@ eue_adjustment(riskparams::StorageEUEReduction, build::StorageExpansion) =
         riskparams.dEUE_power * (build.power_new - riskparams.nameplate_power) +
         riskparams.dEUE_energy * (build.energy_new - riskparams.nameplate_energy)
 
-struct EUECuttingPlaneRegionParams
+struct EUECuttingPlaneParams
+
+    base_eue::Float64
 
     thermaltechs::Vector{ThermalEUEReduction}
     variabletechs::Vector{VariableEUEReduction}
     storagetechs::Vector{StorageEUEReduction}
 
-    function EUECuttingPlaneRegionParams(builds::RegionExpansion, r::Int, adequacy::AdequacyResult)
+    function EUECuttingPlaneParams(builds::SystemExpansion, adequacy::AdequacyResult)
+
+        base_eue = sum(adequacy.eues) / powerunits_MW
 
         thermaltechs = [ThermalEUEReduction(build, adequacy.generation_dEUEs)
                         for build in builds.thermaltechs]
@@ -99,38 +103,9 @@ struct EUECuttingPlaneRegionParams
                                 adequacy.storage_power_dEUEs,
                                 adequacy.storage_energy_dEUEs)]
 
-        return new(thermaltechs, variabletechs, storagetechs)
+        return new(base_eue, thermaltechs, variabletechs, storagetechs)
 
     end
-
-end
-
-function eue_adjustment(params::EUECuttingPlaneRegionParams, builds::RegionExpansion)
-
-
-    thermal_adjustments = sum(eue_adjustment(riskparams, build)
-        for (riskparams, build) in zip(params.thermaltechs, builds.thermaltechs);
-        init=0
-    )
-
-    variable_adjustments = sum(eue_adjustment(riskparams, build)
-        for (riskparams, build) in zip(params.variabletechs, builds.variabletechs);
-        init=0
-    )
-
-    storage_adjustments = sum(eue_adjustment(riskparams, build)
-        for (riskparams, build) in zip(params.storagetechs, builds.storagetechs);
-        init=0
-    )
-
-    return thermal_adjustments + variable_adjustments + storage_adjustments
-
-end
-
-struct EUECuttingPlaneParams
-
-    base_eue::Float64
-    regions::Vector{EUECuttingPlaneRegionParams}
 
 end
 
@@ -138,10 +113,24 @@ function cuttingplane(
     m::JuMP.Model, eue::JuMP.VariableRef, params::EUECuttingPlaneParams,
     builds::SystemExpansion)
 
-    expansion_adjustments = sum(eue_adjustment(riskparams, builds)
-        for (riskparams, builds) in zip(params.regions, builds.regions))
+    eue_estimate = params.base_eue
 
-    plane = @constraint(m, eue >= params.base_eue + expansion_adjustments)
+    eue_estimate += sum(eue_adjustment(riskparams, build)
+        for (riskparams, build) in zip(params.thermaltechs, builds.thermaltechs);
+        init=0
+    )
+
+    eue_estimate += sum(eue_adjustment(riskparams, build)
+        for (riskparams, build) in zip(params.variabletechs, builds.variabletechs);
+        init=0
+    )
+
+    eue_estimate += sum(eue_adjustment(riskparams, build)
+        for (riskparams, build) in zip(params.storagetechs, builds.storagetechs);
+        init=0
+    )
+
+    plane = @constraint(m, eue >= eue_estimate)
     JuMP.set_name(plane, "eue_cutting_plane")
 
     return plane

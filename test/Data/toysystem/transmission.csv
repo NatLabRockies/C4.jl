@@ -1,4 +1,1 @@
 name,from,to,cost_capital,capacity_existing,capacity_new_max
-A-B,A,B,1000,3,10
-C-A,C,A,1000,4,10
-B-C,B,C,1000,2,10

@@ -1,70 +1,70 @@
-struct AddValidator{P,C}
+# struct AddValidator{P,C}
 
-    parentname::String
-    parentset::Set{P}
+#     parentname::String
+#     parentset::Set{P}
 
-    childname::String
-    childsource::String
-    childset::Set{Tuple{P,C}}
+#     childname::String
+#     childsource::String
+#     childset::Set{Tuple{P,C}}
 
-    AddValidator{C}(
-        parentname::String,
-        parentset::Set{P},
-        childname::String,
-        childsource::String,
-    ) where {P,C} = new{P,C}(
-        parentname, parentset,
-        childname, childsource, Set{Tuple{P,C}}())
+#     AddValidator{C}(
+#         parentname::String,
+#         parentset::Set{P},
+#         childname::String,
+#         childsource::String,
+#     ) where {P,C} = new{P,C}(
+#         parentname, parentset,
+#         childname, childsource, Set{Tuple{P,C}}())
 
-end
+# end
 
-function validate!(validator::AddValidator{P,C}, parent::P, child::C) where {P,C}
+# function validate!(validator::AddValidator{P,C}, parent::P, child::C) where {P,C}
 
-    parent in validator.parentset ||
-        error("The $(validator.parentname) $(parent) " *
-              "in $(validator.childsource) does not exist in the system")
+#     parent in validator.parentset ||
+#         error("The $(validator.parentname) $(parent) " *
+#               "in $(validator.childsource) does not exist in the system")
 
-    (parent, child) in validator.childset &&
-        error("The $(validator.childname) $(child) in " *
-              "$(validator.parentname) $(parent)" *
-              "is duplicated in $(validator.childsource)")
+#     (parent, child) in validator.childset &&
+#         error("The $(validator.childname) $(child) in " *
+#               "$(validator.parentname) $(parent)" *
+#               "is duplicated in $(validator.childsource)")
 
-    push!(validator.childset, (parent, child))
+#     push!(validator.childset, (parent, child))
 
-    return
+#     return
 
-end
+# end
 
-struct UpdateValidator{T}
+# struct UpdateValidator{T}
 
-    elementname::String
-    localsource::String
-    localset::Set{T}
-    globalset::Set{T}
+#     elementname::String
+#     localsource::String
+#     localset::Set{T}
+#     globalset::Set{T}
 
-    UpdateValidator(
-        elementname::String,
-        localsource::String,
-        globalset::Set{T}
-    ) where {T} = new{T}(elementname, localsource, Set{T}(), globalset)
+#     UpdateValidator(
+#         elementname::String,
+#         localsource::String,
+#         globalset::Set{T}
+#     ) where {T} = new{T}(elementname, localsource, Set{T}(), globalset)
 
-end
+# end
 
-function validate!(validator::UpdateValidator{T}, x::T) where T
+# function validate!(validator::UpdateValidator{T}, x::T) where T
 
-    x in validator.globalset ||
-        error("The $(validator.elementname) $(x) in " *
-              "$(validator.localsource) does not exist in the system")
+#     x in validator.globalset ||
+#         error("The $(validator.elementname) $(x) in " *
+#               "$(validator.localsource) does not exist in the system")
 
-    x in validator.localset &&
-        error("The $(validator.elementname) $(x)" *
-              "is duplicated in $(validator.localsource)")
+#     x in validator.localset &&
+#         error("The $(validator.elementname) $(x)" *
+#               "is duplicated in $(validator.localsource)")
 
-    push!(validator.localset, x)
+#     push!(validator.localset, x)
 
-    return
+#     return
 
-end
+# end
 
 function validate_columns(
     table::Matrix,

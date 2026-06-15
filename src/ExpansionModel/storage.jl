@@ -6,16 +6,13 @@ struct StorageExpansion <: StorageTechnology
     energy_new::JuMP.VariableRef
 
     function StorageExpansion(
-        m::JuMP.Model, techparams::StorageCandidateParams, regionparams::RegionParams
-    )
-
-        fullname = join([regionparams.name, techparams.name], ",")
+        m::JuMP.Model, techparams::StorageCandidateParams)
 
         power_new = @variable(m, lower_bound=0, upper_bound=techparams.power_max)
-        JuMP.set_name(power_new, "storage_new_power[$fullname]")
+        JuMP.set_name(power_new, "storage_new_power[$(techparams.name)]")
 
         energy_new = @variable(m, lower_bound=0, upper_bound=techparams.energy_max)
-        JuMP.set_name(energy_new, "storage_new_energy[$fullname]")
+        JuMP.set_name(energy_new, "storage_new_energy[$(techparams.name)]")
 
         new(techparams, power_new, energy_new)
 

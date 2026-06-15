@@ -31,15 +31,17 @@ struct StorageDispatchRecurrence
 
 end
 
-struct RegionDispatchRecurrence
+struct DispatchRecurrence{S <: System}
+
+    dispatch::SystemDispatch{S} # Note this is just a reference, data is owned elsewhere
+    repetitions::Int
 
     storagetechs::Vector{StorageDispatchRecurrence}
 
-    function RegionDispatchRecurrence(
-        m::JuMP.Model,
-        prev_recurrence::Union{RegionDispatchRecurrence,Nothing},
-        region::Region, dispatch::RegionDispatch, repetitions::Int
-    )
+    function DispatchRecurrence(
+        m::JuMP.Model, prev_recurrence::Union{DispatchRecurrence{S},Nothing},
+        system::S, dispatch::SystemDispatch{S}, repetitions::Int
+    ) where S <: System
 
         prev_recurrence_stors = isnothing(prev_recurrence) ?
             StorageDispatchRecurrence[] : prev_recurrence.storagetechs
@@ -48,37 +50,10 @@ struct RegionDispatchRecurrence
             StorageDispatchRecurrence(
                 m, prev_storrecurrence, stor, stordispatch, repetitions)
             for (prev_storrecurrence, stor, stordispatch)
-            in zip_longest(prev_recurrence_stors, storagetechs(region), dispatch.storagetechs)
+            in zip_longest(prev_recurrence_stors, storagetechs(system), dispatch.storagetechs)
         ]
 
-        new(stors)
-
-    end
-
-end
-
-struct DispatchRecurrence{D <: SystemDispatch}
-
-    dispatch::D # Note this is just a reference, data is owned elsewhere
-    repetitions::Int
-
-    regions::Vector{RegionDispatchRecurrence}
-
-    function DispatchRecurrence(
-        m::JuMP.Model, prev_recurrence::Union{DispatchRecurrence{D},Nothing},
-        system::System, dispatch::D, repetitions::Int
-    ) where D <: SystemDispatch
-
-        prev_recurrence_regions = isnothing(prev_recurrence) ?
-            RegionDispatchRecurrence[] : prev_recurrence.regions
-
-        regions = [
-            RegionDispatchRecurrence(
-                m, prev_regionrecurrence, region, regiondispatch, repetitions)
-            for (prev_regionrecurrence, region, regiondispatch)
-            in zip_longest(prev_recurrence_regions, system.regions, dispatch.regions)]
-
-        new{D}(dispatch, repetitions, regions)
+        new{S}(dispatch, repetitions, stors)
 
     end
 
@@ -87,20 +62,20 @@ end
 cost(recurrence::DispatchRecurrence) =
     cost(recurrence.dispatch) * recurrence.repetitions
 
-struct DispatchSequence{D <: SystemDispatch}
+struct DispatchSequence{S <: System}
 
     time::TimeProxyAssignment
 
-    dispatches::Vector{D}
-    recurrences::Vector{DispatchRecurrence{D}}
+    dispatches::Vector{SystemDispatch{S}}
+    recurrences::Vector{DispatchRecurrence{S}}
 
     function DispatchSequence(
         m::JuMP.Model, system::S, time::TimeProxyAssignment, voll::Float64=NaN
-    ) where {R, I, S <: System{R,I}}
+    ) where {S <: System}
 
         dispatches = [SystemDispatch(m, system, period, voll) for period in time.periods]
         recurrences = sequence_recurrences(m, system, dispatches, time)
-        new{SystemDispatch{S,R,I}}(time, dispatches, recurrences)
+        new{S}(time, dispatches, recurrences)
 
     end
 
@@ -110,11 +85,11 @@ cost(sequence::DispatchSequence) =
     sum(cost(recurrence) for recurrence in sequence.recurrences; init=0)
 
 function sequence_recurrences(
-    m::JuMP.Model, system::System, dispatches::Vector{D}, time::TimeProxyAssignment
-) where D <: SystemDispatch
+    m::JuMP.Model, system::S, dispatches::Vector{SystemDispatch{S}}, time::TimeProxyAssignment
+) where S <: System
 
     sequence = deduplicate(time.days)
-    recurrences = Vector{DispatchRecurrence{D}}(undef, length(sequence))
+    recurrences = Vector{DispatchRecurrence{S}}(undef, length(sequence))
 
     prev_recurrence = nothing
 

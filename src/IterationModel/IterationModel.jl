@@ -6,7 +6,7 @@ using C4.DispatchModel
 using C4.ExpansionModel
 
 import ..store, ..powerunits_MW
-import C4.ExpansionModel: EUECuttingPlaneParams, EUECuttingPlaneRegionParams
+import C4.ExpansionModel: EUECuttingPlaneParams
 
 import Dates: Date, now
 import DBInterface
@@ -27,10 +27,8 @@ function iterate_ra_cem(
     persist = length(outfile) > 0
     timeout += time()
 
-    neue_factor = sum(sum(region.demand) for region in sys.regions) * 1e-6
+    neue_factor = total_demand(sys) * 1e-6
     max_eue = max_neue * neue_factor
-
-    n_regions = length(sys.regions)
 
     ram_start = now()
     ram = AdequacyProblem(sys, samples=nsamples)
@@ -118,7 +116,7 @@ function iterate_ra_cem(
         end
 
         if endog_risk
-            push!(eue_estimator, EUECuttingPlaneParams(cem, ram_result))
+            push!(eue_estimator, EUECuttingPlaneParams(cem.builds, ram_result))
         end
 
         aug_end = now()
@@ -218,17 +216,6 @@ already_included(hour::Int, periods::Vector{TimePeriod}) =
 function represented_timeslices(time::TimeProxyAssignment, p::Int)
     T = time.daylength
     return [((d-1)*T+1):(d*T) for d in findall(isequal(p), time.days)]
-end
-
-function EUECuttingPlaneParams(cem::ExpansionProblem, adequacy::AdequacyResult)
-
-    base_eue = sum(adequacy.eues) / powerunits_MW
-
-    regions = [EUECuttingPlaneRegionParams(builds, r, adequacy)
-               for (r, builds) in enumerate(cem.builds.regions)]
-
-    return EUECuttingPlaneParams(base_eue, regions)
-
 end
 
 end

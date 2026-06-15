@@ -6,22 +6,21 @@ import JuMP: @variable, @constraint, @expression, @objective, value
 import IterTools: zip_longest
 
 import ..ThermalTechnology, ..VariableTechnology, ..StorageTechnology,
-       ..Interface, ..Region, ..System,
+       ..System,
        ..JuMP_ExpressionRef, ..JuMP_LessThanConstraintRef,
        ..JuMP_GreaterThanConstraintRef, ..JuMP_EqualToConstraintRef, ..varnames!,
        ..availablecapacity, ..nameplatecapacity, ..maxpower, ..maxenergy,
        ..roundtrip_efficiency, ..operating_cost,
-       ..name, ..cost, ..cost_generation, ..demand, ..region_from, ..region_to,
+       ..name, ..cost, ..cost_generation, ..demand,
        ..variabletechs, ..storagetechs, ..thermaltechs,
-       ..importinginterfaces, ..exportinginterfaces, ..solve!, ..powerunits_MW
+       ..solve!, ..powerunits_MW
 
 using ..Data
 
 include("dispatch.jl")
 include("sequencing.jl")
 
-# TODO: Will eventually only need DispatchSequence
-export DispatchProblem, DispatchSequence, SystemDispatch
+export DispatchProblem, DispatchSequence
 
 struct DispatchProblem{D<:DispatchSequence}
 
@@ -32,8 +31,8 @@ struct DispatchProblem{D<:DispatchSequence}
     dispatch::D
 
     function DispatchProblem(
-        system::SystemParams, D::Type{<:SystemDispatch},
-        periods::TimeProxyAssignment, optimizer, voll::Float64=NaN
+        system::SystemParams, periods::TimeProxyAssignment,
+        optimizer; voll::Float64=NaN
     )
 
         n_timesteps = length(system.timesteps)
@@ -43,7 +42,7 @@ struct DispatchProblem{D<:DispatchSequence}
 
         m = JuMP.direct_model(optimizer)
 
-        dispatch = DispatchSequence(D, m, system, periods, voll)
+        dispatch = DispatchSequence(m, system, periods, voll)
 
         opex_scalar = 8766 / n_timesteps
         @objective(m, Min, opex_scalar * cost(dispatch))

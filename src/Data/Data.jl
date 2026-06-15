@@ -6,16 +6,13 @@ import Base: length
 
 import ..VariableSite, ..Technology,
        ..ThermalTechnology, ..VariableTechnology, ..StorageTechnology,
-       ..Interface, ..Region, ..System, ..cost_generation,
+       ..System, ..cost_generation,
        ..maxpower, ..maxenergy, ..roundtrip_efficiency, ..operating_cost,
        ..name, ..variabletechs, ..storagetechs, ..thermaltechs,
        ..sites, ..availability, ..nameplatecapacity, ..availablecapacity,
-       ..region_from, ..region_to,
-       ..demand, ..importinginterfaces, ..exportinginterfaces,
-       ..powerunits_MW
+       ..demand, ..powerunits_MW
 
-# TODO: Rename Period -> DispatchPeriod and TimePeriod -> Period
-export TimePeriod, Period, TimeProxyAssignment,
+export TimePeriod, TimeProxyAssignment,
        ThermalExistingParams, ThermalExistingSiteParams, ThermalCandidateParams,
        VariableExistingParams, VariableExistingSiteParams,
        VariableCandidateParams, VariableCandidateSiteParams,
@@ -41,7 +38,6 @@ include("system.jl")
 
 include("representative_periods.jl")
 
-include("import_validation.jl")
 include("import.jl")
 include("export.jl")
 

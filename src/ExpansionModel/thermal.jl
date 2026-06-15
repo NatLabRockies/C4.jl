@@ -4,12 +4,10 @@ struct ThermalExpansion <: ThermalTechnology
     units_new::JuMP.VariableRef
 
     function ThermalExpansion(
-        m::JuMP.Model, techparams::ThermalCandidateParams, regionparams::RegionParams
-    )
+        m::JuMP.Model, techparams::ThermalCandidateParams)
 
-        fullname = join([regionparams.name, techparams.name], ",")
         units_new = @variable(m, integer=true, lower_bound=0, upper_bound=techparams.max_units)
-        JuMP.set_name(units_new, "thermal_new_units[$fullname]")
+        JuMP.set_name(units_new, "thermal_new_units[$(techparams.name)]")
 
         new(techparams, units_new)
 
