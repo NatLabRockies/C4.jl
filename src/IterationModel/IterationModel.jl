@@ -13,7 +13,6 @@ import DBInterface
 import DelimitedFiles: writedlm
 import DuckDB
 import JuMP: value
-import PRASCore: EUE, NEUE, val
 
 export iterate_ra_cem
 
@@ -30,13 +29,34 @@ function iterate_ra_cem(
     persist = length(outfile) > 0
     timeout += time()
 
-    # annual_neue_factor converts NEUE (ppm) ↔ EUE (powerunits_MWh)
+    # annual_neue_factor converts NEUE (ppm) ↔ EUE (data units) for the non-seasonal case
     annual_neue_factor = sum(sum(region.demand) for region in sys.regions) * 1e-6
 
-    # EUE limits used by the JuMP model (powerunits_MWh)
-    max_eue         = seasonal ? nothing : max_neue * annual_neue_factor
-    period_max_eues = seasonal ? Dict(name => neue * annual_neue_factor
-                                      for (name, neue) in max_neue) : nothing
+    # EUE limits used by the JuMP model (data units)
+    max_eue = seasonal ? nothing : max_neue * annual_neue_factor
+
+    # Seasonal: each season's EUE budget uses that season's own demand as denominator,
+    # so the constraint means season_EUE / season_demand <= max_neue_ppm.
+    # This matches the old implementation (max_eues_by_period[r,p] = max_neue * demand_share).
+    season_neue_factors = if seasonal
+        _T = base_chronology.daylength
+        _N = length(first(sys.regions).demand)
+        Dict(
+            string(period.name) =>
+                sum(
+                    sum(region.demand[(d-1)*_T+h] for region in sys.regions)
+                    for d in findall(isequal(s), base_chronology.days)
+                    for h in 1:_T
+                    if (d-1)*_T+h <= _N
+                ) * 1e-6
+            for (s, period) in enumerate(base_chronology.periods)
+        )
+    else
+        nothing
+    end
+
+    period_max_eues = seasonal ? Dict(name => max_neue[name] * season_neue_factors[name]
+                                      for name in keys(max_neue)) : nothing
 
     n_regions = length(sys.regions)
 
@@ -45,7 +65,8 @@ function iterate_ra_cem(
     ram_result = solve(ram)
     ram_end = now()
 
-    show_neues(ram_result)
+    println("NEUE: ", neue(ram_result))
+    println("LOLE: ", sum(ram_result.lolps))
 
     aug_start = now()
 
@@ -112,11 +133,13 @@ function iterate_ra_cem(
         ram_result = solve(ram)
         ram_end = now()
 
-        show_neues(ram_result)
+        println("NEUE: ", neue(ram_result))
+        println("LOLE: ", sum(ram_result.lolps))
 
         is_adequate = if seasonal
             all(
-                period_neue(ram_result, base_chronology, s, annual_neue_factor) <=
+                period_neue(ram_result, base_chronology, s,
+                    season_neue_factors[string(base_chronology.periods[s].name)]) <=
                     max_neue[string(base_chronology.periods[s].name)]
                 for s in eachindex(base_chronology.periods)
             )
@@ -188,7 +211,7 @@ function iterate_ra_cem(
 
     end
 
-    return cem, ram, pcm
+    return cem, ram_result, pcm
 
 end
 
@@ -197,8 +220,7 @@ function add_stressperiod(
     skip_existing::Bool=false
 )
 
-    eues = sum(adequacy.shortfalls.shortfall_mean, dims=1)
-    days = reshape(eues, times.daylength, :)
+    days = reshape(adequacy.eues, times.daylength, :)
     days = vec(sum(days, dims=1))
     og_new_day = argmax(days)
 
@@ -243,7 +265,7 @@ end
 
 function EUECuttingPlaneParams(cem::ExpansionProblem, adequacy::AdequacyResult)
 
-    base_eue = val(EUE(adequacy.shortfalls)) / powerunits_MW
+    base_eue = sum(adequacy.eues) / powerunits_MW
 
     regions = [EUECuttingPlaneRegionParams(builds, r, adequacy)
                for (r, builds) in enumerate(cem.builds.regions)]
@@ -262,8 +284,7 @@ function seasonal_EUECuttingPlaneParams(
     adequacy::AdequacyResult,
     base_chronology::TimeProxyAssignment)
 
-    N      = length(adequacy.shortfalls.eventperiod_period_mean)
-    lolps  = adequacy.shortfalls.eventperiod_period_mean
+    N      = length(adequacy.eues)
     T      = base_chronology.daylength
 
     [
@@ -271,22 +292,31 @@ function seasonal_EUECuttingPlaneParams(
             sname       = string(season_period.name)
             season_days = findall(isequal(s), base_chronology.days)
 
-            # Season-masked lolps: zero outside this season's calendar days
-            lolps_season = zeros(N)
+            # Season-masked gen_dEUEs: zero outside this season's calendar days
+            gen_dEUEs_season = zeros(N)
             for d in season_days, h in 1:T
                 t = (d - 1) * T + h
-                t <= N && (lolps_season[t] = lolps[t])
+                t <= N && (gen_dEUEs_season[t] = adequacy.generation_dEUEs[t])
             end
+
+            # Season-masked storage dEUEs: sum per-timestep duals over season only
+            season_ts = [((d-1)*T+h) for d in season_days for h in 1:T
+                         if (d-1)*T+h <= N]
+            stor_power_dEUEs_season  = vec(sum(
+                adequacy.storage_power_dEUEs_ts[season_ts,  :], dims=1))
+            stor_energy_dEUEs_season = vec(sum(
+                adequacy.storage_energy_dEUEs_ts[season_ts, :], dims=1))
 
             # Base EUE for this season (sum of shortfall over season timesteps)
             base_eue = sum(
-                sum(adequacy.shortfalls.shortfall_mean[:, (d - 1) * T + h])
+                adequacy.eues[(d - 1) * T + h]
                 for d in season_days for h in 1:T
                 if (d - 1) * T + h <= N
             ) / powerunits_MW
 
             regions = [
-                EUECuttingPlaneRegionParams(builds, r, adequacy, lolps_season)
+                EUECuttingPlaneRegionParams(builds, r, adequacy, gen_dEUEs_season,
+                    stor_power_dEUEs_season, stor_energy_dEUEs_season)
                 for (r, builds) in enumerate(cem.builds.regions)
             ]
 
@@ -308,10 +338,10 @@ function period_neue(
 
     T           = base_chronology.daylength
     season_days = findall(isequal(s), base_chronology.days)
-    N           = length(adequacy.shortfalls.eventperiod_period_mean)
+    N           = length(adequacy.eues)
 
     season_eue = sum(
-        sum(adequacy.shortfalls.shortfall_mean[:, (d - 1) * T + h])
+        adequacy.eues[(d - 1) * T + h]
         for d in season_days for h in 1:T
         if (d - 1) * T + h <= N
     ) / powerunits_MW
