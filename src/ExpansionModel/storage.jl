@@ -1,4 +1,4 @@
-struct StorageExpansion <: StorageTechnology
+struct StorageExpansion <: DispatchableStorageTech
 
     params::StorageCandidateParams
 
@@ -8,10 +8,10 @@ struct StorageExpansion <: StorageTechnology
     function StorageExpansion(
         m::JuMP.Model, techparams::StorageCandidateParams)
 
-        power_new = @variable(m, lower_bound=0, upper_bound=techparams.power_max)
+        power_new = @variable(m, lower_bound=0, upper_bound=techparams.power_max[1])
         JuMP.set_name(power_new, "storage_new_power[$(techparams.name)]")
 
-        energy_new = @variable(m, lower_bound=0, upper_bound=techparams.energy_max)
+        energy_new = @variable(m, lower_bound=0, upper_bound=techparams.energy_max[1])
         JuMP.set_name(energy_new, "storage_new_energy[$(techparams.name)]")
 
         new(techparams, power_new, energy_new)
@@ -25,11 +25,11 @@ maxpower(tech::StorageExpansion) = tech.power_new
 maxenergy(tech::StorageExpansion) = tech.energy_new
 
 cost(tech::StorageExpansion) =
-    tech.power_new * tech.params.cost_capital_power +
-    tech.energy_new * tech.params.cost_capital_energy
+    tech.power_new * tech.params.cost_capital_power[1] +
+    tech.energy_new * tech.params.cost_capital_energy[1]
 
 operating_cost(tech::StorageExpansion) =
-    tech.params.cost_operation
+    tech.params.cost_vom[1]
 
 roundtrip_efficiency(tech::StorageExpansion) =
     tech.params.roundtrip_efficiency
@@ -51,10 +51,10 @@ function StorageExistingParams(tech::StorageExpansion)
     return StorageExistingParams(
         params.name,
         params.category,
-        params.cost_operation,
-        params.roundtrip_efficiency,
         new_duration,
-        [StorageExistingSiteParams("", new_power)]
+        params.roundtrip_efficiency,
+        params.cost_vom,
+        [StorageExistingSiteParams(tech.params.name * " built", [new_power])]
     )
 
 end
@@ -66,11 +66,11 @@ function StorageCandidateParams(tech::StorageExpansion)
     return StorageCandidateParams(
         params.name,
         params.category,
-        params.cost_operation,
         params.roundtrip_efficiency,
+        params.cost_vom,
         params.cost_capital_power,
         params.cost_capital_energy,
-        params.power_max - value(tech.power_new),
-        params.energy_max - value(tech.energy_new))
+        [params.power_max[1] .- value(tech.power_new)],
+        [params.energy_max[1] .- value(tech.energy_new)])
 
 end

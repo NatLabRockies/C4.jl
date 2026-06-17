@@ -1,87 +1,101 @@
-abstract type Site end
-abstract type Technology end
+abstract type DispatchableSite end
+abstract type DispatchableTech end
 
 """
-`VariableSite` is an abstract type that can be used to instantiate dispatch
-problems. Instances of `VariableSite` should define:
+`DispatchableVariableSite` is an abstract type that can be used to instantiate dispatch
+problems. Instances of `DispatchableVariableSite` should define:
 
-`nameplatecapacity(site::VariableSite)`
+`nameplatecapacity(site::DispatchableVariableSite)`
 Returns installed capacity in `C4.powerunits_MW`.
 
-`availability(site::VariableSite, t::Int) -> Float64`
+`availability(site::DispatchableVariableSite, i::Int, d::Int, h::Int) -> Float64`
 Returns a unitless value between 0.0 and 1.0 corresponding to
-global timestep `t`.
+the `h`-th hour of the `d`-th dispatch day of the `i`-th investment year.
 """
-abstract type VariableSite <: Site end
+abstract type DispatchableVariableSite <: DispatchableSite end
 
 function availability end
 function nameplatecapacity end
 
-availablecapacity(site::VariableSite, t::Int) =
-    nameplatecapacity(site) * availability(site, t)
-
+availablecapacity(site::DispatchableVariableSite, invyear::Int, day::Int, hour::Int) =
+    nameplatecapacity(site, invyear) * availability(site, invyear, day, hour)
 
 """
-`VariableTechnology` is an abstract type that can be used to instantiate
-dispatch problems. Instances of `VariableTechnology` should define:
+`DispatchableVariableTech` is an abstract type that can be used to instantiate
+dispatch problems. Instances of `DispatchableVariableTech` should define:
 
-`name(tech::VariableTechnology) -> AbstractString`
+`name(tech::DispatchableVariableTech) -> AbstractString`
 Returns the technology name.
 
-`sites(tech::VariableTechnology) -> Vector{<:VariableSite}`
-Returns a vector of the `VariableSite`s associated with the `VariableTechnology`.
+`sites(tech::DispatchableVariableTech) -> Vector{<:VariableSite}`
+Returns a vector of the `VariableSite`s associated with the `VariableTech`.
 
-`cost_generation(tech::VariableTechnology) -> Float64`
-Returns the marginal generating cost of `tech` in units of \$/C4.powerunits_MW.
+`cost_generation(tech::DispatchableVariableTech, i::Int) -> Float64`
+Returns the marginal generating cost of `tech` in the i-ith investment year,
+in units of \$/C4.powerunits_MW.
 """
-abstract type VariableTechnology <: Technology end
+abstract type DispatchableVariableTech <: DispatchableTech end
 
 function name end
 function sites end
 function cost_generation end
 
-nameplatecapacity(tech::VariableTechnology) =
-    sum(nameplatecapacity(site) for site in sites(tech); init=0)
+nameplatecapacity(tech::DispatchableVariableTech, invyear::Int=1) =
+    sum(nameplatecapacity(site, invyear) for site in sites(tech); init=0)
 
-availablecapacity(tech::VariableTechnology, t::Int) =
-    sum(availablecapacity(site, t) for site in sites(tech); init=0)
+availablecapacity(tech::DispatchableVariableTech, invyear::Int, day::Int, hour::Int) =
+    sum(availablecapacity(site, invyear, day, hour) for site in sites(tech); init=0)
+
+availablecapacity(tech::DispatchableVariableTech, t::Int) =
+    sum(availablecapacity(site, 1,
+        div(t-1, N_HOURS_IN_DAY)+1, rem(t-1, N_HOURS_IN_DAY)+1)
+        for site in sites(tech); init=0)
 
 
 """
-`ThermalTechnology` is an abstract type that can be used to instantiate
-dispatch problems. Instances of `ThermalTechnology` should define:
+`DispatchableThermalTech` is an abstract type that can be used to instantiate
+dispatch problems. Instances of `DispatchableThermalTech` should define:
 
-`name(tech::ThermalTechnology) -> AbstractString`
+`name(tech::DispatchableThermalTech) -> AbstractString`
 Returns the technology name.
 
-`nameplatecapacity(tech::ThermalTechnology)`
-Returns installed capacity in `C4.powerunits_MW`.
+`nameplatecapacity(tech::DispatchableThermalTech, i::Int)`
+Returns installed capacity in the `i`-th investment year,
+in terms of `C4.powerunits_MW`.
 
-`availablecapacity(tech::ThermalTechnology, t::Int)`
-`Returns expected (average) available capacity in `C4.powerunits_MW`.
+`ratedcapacity(tech::DispatchableThermalTech, i::Int, d::Int, h::Int)`
+Returns deterministically-derated (not including potential outages) capacity
+in the `h`-th hour of the `d`-th dispatch day of the `i`-th investment year,
+in terms of `C4.powerunits_MW`.
 
-`cost_generation(tech::ThermalTechnology) -> Float64`
-Returns the marginal generating cost of `tech` in units of \$/C4.powerunits_MW.
+`expectedcapacity(tech::DispatchableThermalTech, i::Int, d::Int, h::Int)`
+`Returns expected (average) available capacity (accounting for reliability
+statistics) in the `h`-th hour of the `d`-th dispatch day of the
+`i`-th investment year, in terms of `C4.powerunits_MW`.
 
-`max_unit_ramp(tech::ThermalTechnology) -> Float64`
+`cost_generation(tech::DispatchableThermalTech, i::Int) -> Float64`
+Returns the marginal generating cost of `tech` in the `i`-th investment year,
+in units of \$/C4.powerunits_MW.
 
-`num_units(tech::ThermalTechnology)`
+`max_unit_ramp(tech::DispatchableThermalTech) -> Float64`
 
-`unit_size(tech::ThermalTechnology) -> Float64`
+`num_units(tech::DispatchableThermalTech, i::Int)`
 
-`min_gen(tech::ThermalTechnology) -> Float64`
+`unit_size(tech::DispatchableThermalTech) -> Float64`
 
-`min_uptime(tech::ThermalTechnology) -> Float64`
+`min_gen(tech::DispatchableThermalTech) -> Float64`
 
-`min_downtime(tech::ThermalTechnology) -> Float64`
+`min_uptime(tech::DispatchableThermalTech) -> Float64`
 
-`cost_startup(tech::ThermalTechnology) -> Float64`
+`min_downtime(tech::DispatchableThermalTech) -> Float64`
 
-`co2_generation(tech::ThermalTechnology) -> Float64`
+`cost_startup(tech::DispatchableThermalTech, i::Int) -> Float64`
 
-`co2_startup(tech::ThermalTechnology) -> Float64`
+`co2_generation(tech::DispatchableThermalTech) -> Float64`
+
+`co2_startup(tech::DispatchableThermalTech) -> Float64`
 """
-abstract type ThermalTechnology <: Technology end
+abstract type DispatchableThermalTech <: DispatchableTech end
 function max_unit_ramp end
 function num_units end
 function unit_size end
@@ -93,17 +107,17 @@ function co2_startup end
 function co2_generation end
 
 """
-StorageTechnology is an abstract type that can be used to instantiate
-dispatch problems. Instances of StorageTechnology should define:
+DispatchableStorageTech is an abstract type that can be used to instantiate
+dispatch problems. Instances of DispatchableStorageTech should define:
 
 ```
-maxpower(::StorageTechnology)
-maxenergy(::StorageTechnology)
-operating_cost(::StorageTechnology) -> Float64
-roundtrip_efficiency(::StorageTechnology) -> Float64
+maxpower(::DispatchableStorageTech)
+maxenergy(::DispatchableStorageTech)
+operating_cost(::DispatchableStorageTech) -> Float64
+roundtrip_efficiency(::DispatchableStorageTech) -> Float64
 ```
 """
-abstract type StorageTechnology <: Technology end
+abstract type DispatchableStorageTech <: DispatchableTech end
 
 function maxenergy end
 function maxpower end
@@ -119,17 +133,17 @@ function solve! end
 function store end
 
 """
-System is an abstract type that can be used to instantiate
+DispatchableSystem is an abstract type that can be used to instantiate
 dispatch problems. Instances of System should define:
 ```
-name(::System)
-demand(::System, t::Int)
-thermaltechs(::System) -> Vector{ThermalTechnology}
-variabletechs(::System) -> Vector{VariableTechnology}
-storagetechs(::System) -> Vector{StorageTechnology}
+name(::DispatchableSystem)
+demand(::DispatchableSystem, i::Int, d::Int, h::Int)
+thermaltechs(::DispatchableSystem) -> Vector{DispatchableThermalTech}
+variabletechs(::DispatchableSystem) -> Vector{DispatchableVariableTech}
+storagetechs(::DispatchableSystem) -> Vector{DispatchableStorageTech}
 ```
 """
-abstract type System end
+abstract type DispatchableSystem end
 
 function demand end
 function thermaltechs end

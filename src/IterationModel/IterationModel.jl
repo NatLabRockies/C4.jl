@@ -17,8 +17,8 @@ import JuMP: value
 export iterate_ra_cem
 
 function iterate_ra_cem(
-    sys::SystemParams, base_chronology::TimeProxyAssignment,
-    max_neue::Float64, optimizer; neue_tol::Float64=.01,
+    sys::SystemParams, base_chronology::DispatchProxyMapping,
+    max_neue::Float64, optimizer; neue_tol::Float64=.001,
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     max_co2_intensity::Float64=NaN, # kg/MWh
     co2_offset_price::Float64=9999., # $/tonne CO2
@@ -33,21 +33,14 @@ function iterate_ra_cem(
     demand = total_demand(sys)
 
     max_eue = max_neue * demand * 1e-6
-    max_co2 = max_co2_intensity * (demand * powerunits_MW) * 1e-9 # in Megatonnes
+    max_co2 = max_co2_intensity * (demand * powerunits_MW) * 1e-3 # in tonnes
 
     ram_start = now()
     ram = AdequacyProblem(sys, samples=nsamples)
     ram_result = solve(ram)
     ram_end = now()
 
-    println("NEUE: ", neue(ram_result))
-    println("LOLE: ", sum(ram_result.lolps))
-    # println("LOLPs: ", ram_result.lolps)
-    # println("EUEs: ", ram_result.eues)
-    # println("Generation dEUE: ", ram_result.generation_dEUEs)
-    # println("Storage Power dEUE: ", ram_result.storage_power_dEUEs)
-    # println("Storage Energy dEUE: ", ram_result.storage_energy_dEUEs)
-    #show_neues(ram_result)
+    println("NEUE: ", neue(ram_result), "\tLOLE: ", sum(ram_result.lolps))
 
     aug_start = now()
 
@@ -76,9 +69,10 @@ function iterate_ra_cem(
     sys_built = nothing
     cem = nothing
     prev_cem = nothing
+    n_iters = 0
+
     # Shouldn't we use initial RA results here? Right now they're only used for ASPP
     eue_estimator = EUECuttingPlaneParams[]
-    n_iters = 0
 
     while (time() < timeout)
 
@@ -92,7 +86,7 @@ function iterate_ra_cem(
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
         # println("Recurrences:")
-        # for recc in cem.economicdispatch.recurrences
+        # for recc in cem.dispatch.recurrences
         #     println(recc.repetitions, " x ", recc.dispatch.period.name)
         # end
 
@@ -105,13 +99,7 @@ function iterate_ra_cem(
         ram_result = solve(ram)
         ram_end = now()
 
-        println("NEUE: ", neue(ram_result))
-        println("LOLE: ", sum(ram_result.lolps))
-        # println("LOLPs: ", ram_result.lolps)
-        # println("EUEs: ", ram_result.eues)
-        # println("Generation dEUE: ", ram_result.generation_dEUEs)
-        # println("Storage Power dEUE: ", ram_result.storage_power_dEUEs)
-        # println("Storage Energy dEUE: ", ram_result.storage_energy_dEUEs)
+        println("NEUE: ", neue(ram_result), "\tLOLE: ", sum(ram_result.lolps))
 
         is_adequate = neue(ram_result) <= max_neue * (1 + neue_tol)
 
@@ -136,7 +124,7 @@ function iterate_ra_cem(
             store_iteration_step(con, n_iters, "adequacy", ram_start => ram_end)
             store_iteration_step(con, n_iters, "augmentation", aug_start => aug_end)
             store(con, n_iters, cem.builds)
-            store(con, n_iters, cem.economicdispatch)
+            store(con, n_iters, cem.dispatch)
             store(con, n_iters, ram_result)
             DBInterface.execute(con, "CHECKPOINT")
             store_end = now()
@@ -177,51 +165,47 @@ function iterate_ra_cem(
 end
 
 function add_stressperiod(
-    sys::SystemParams, times::TimeProxyAssignment, adequacy::AdequacyResult;
+    sys::SystemParams, times::DispatchProxyMapping, adequacy::AdequacyResult;
     skip_existing::Bool=false
 )
 
-    # TODO: Could use gen_dEUEs now instead of EUE? Would capture storage
-    #       charging opportunities
-    days = reshape(adequacy.eues, times.daylength, :)
-    days = vec(sum(days, dims=1))
-    og_new_day = argmax(days)
+    # TODO: Investigate using adequacy.generation_dEUEs (or both)?
+    day_eues = vec(sum(adequacy.eues, dims=1))
+    og_new_day_idx = argmax(day_eues)
 
-    new_day = og_new_day
-    new_day_first_hour = (new_day - 1) * times.daylength + 1
+    new_day_idx = og_new_day_idx
 
-    while already_included(new_day_first_hour, times.periods)
+    while already_included(new_day_idx, times.days)
 
         skip_existing && return times
 
-        new_day = new_day > 1 ? new_day - 1 : length(days)
-        new_day_first_hour = (new_day - 1) * times.daylength + 1
+        new_day_idx = new_day_idx > 1 ? new_day_idx - 1 : length(day_eues)
 
-        if new_day == og_new_day
+        if new_day_idx == og_new_day_idx
             @warn("No unmodeled stress periods left to add")
             return times
         end
 
     end
 
-    ts = new_day_first_hour:(new_day_first_hour+times.daylength-1)
-    name = string(Date(sys.timesteps[new_day_first_hour]))
-    new_period = TimePeriod(ts, name)
+    year, dayofyear = year_dayofyear(new_day_idx, sys.times)
+    name = "Y$year D$dayofyear"
+    new_day = DispatchDay(name, new_day_idx, times)
     println("Adding period: $name")
 
-    new_periods = [times.periods; new_period]
+    new_days = [times.days; new_day]
 
-    new_days = copy(times.days)
-    new_days[new_day] = length(new_periods)
+    new_mapping = copy(times.mapping)
+    new_mapping[new_day_idx] = length(new_days)
 
-    return TimeProxyAssignment(new_periods, new_days)
+    return DispatchProxyMapping(new_days, new_mapping)
 
 end
 
-already_included(hour::Int, periods::Vector{TimePeriod}) =
-    any(p -> in(hour, p.timesteps), periods)
+already_included(day_idx::Int, days::Vector{DispatchDay}) =
+    any(d -> d.dispatchday_idx == day_idx, days)
 
-function represented_timeslices(time::TimeProxyAssignment, p::Int)
+function represented_timeslices(time::DispatchProxyMapping, p::Int)
     T = time.daylength
     return [((d-1)*T+1):(d*T) for d in findall(isequal(p), time.days)]
 end

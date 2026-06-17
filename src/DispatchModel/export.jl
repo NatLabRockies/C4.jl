@@ -44,9 +44,9 @@ function store(con::DBInterface.Connection, iter::Int, seq::DispatchSequence)
     DBInterface.execute(con, "CREATE TABLE IF NOT EXISTS periods (
         iteration INTEGER REFERENCES iterations(id),
         period TEXT,
+        year INTEGER,
+        dayofyear INTEGER,
         reps INTEGER,
-        t_start INTEGER,
-        t_end INTEGER,
         PRIMARY KEY (iteration, period)
     )")
 
@@ -94,68 +94,70 @@ function store(con::DBInterface.Connection, iter::Int, seq::DispatchSequence)
 
 end
 
-function store(appender::DispatchAppender, iter::Int, time::TimeProxyAssignment)
-    reps = zeros(Int, length(time.periods))
-    foreach(p_idx -> reps[p_idx] += 1, time.days)
-    foreach((p, n) -> store(appender, iter, p, n), time.periods, reps)
+function store(appender::DispatchAppender, iter::Int, time::DispatchProxyMapping)
+    reps = zeros(Int, length(time.days))
+    foreach(p_idx -> reps[p_idx] += 1, time.mapping)
+    foreach((p, n) -> store(appender, iter, p, n), time.days, reps)
 end
 
-function store(appender::DispatchAppender, iter::Int, period::TimePeriod, reps::Int)
+function store(appender::DispatchAppender, iter::Int, period::DispatchDay, reps::Int)
 
     DuckDB.append(appender.periods, iter)
     DuckDB.append(appender.periods, period.name)
+    DuckDB.append(appender.periods, period.dispatchyear_idx)
+    DuckDB.append(appender.periods, period.dispatchdayofyear_idx)
     DuckDB.append(appender.periods, reps)
-    DuckDB.append(appender.periods, first(period.timesteps))
-    DuckDB.append(appender.periods, last(period.timesteps))
     DuckDB.end_row(appender.periods)
 
 end
 
-function store(appender::DispatchAppender, iter::Int, system::SystemDispatch)
+function store(appender::DispatchAppender, iter::Int, dispatch::SystemDispatch)
 
-    for (i, t) in enumerate(system.period.timesteps)
+    d = dispatch.period.dispatchday_idx
+
+    for h in 1:N_HOURS_IN_DAY
 
         DuckDB.append(appender.demands, iter)
-        DuckDB.append(appender.demands, system.period.name)
-        DuckDB.append(appender.demands, i)
-        DuckDB.append(appender.demands, demand(system, t) * powerunits_MW)
+        DuckDB.append(appender.demands, dispatch.period.name)
+        DuckDB.append(appender.demands, h)
+        DuckDB.append(appender.demands, demand(dispatch.system, 1, d, h) * powerunits_MW)
         DuckDB.end_row(appender.demands)
 
-        for gen in system.thermaltechs
+        for gen in dispatch.thermaltechs
 
-            dispatch = value(gen.dispatch[i]) * powerunits_MW
+            dispatch_val = value(gen.dispatch[h]) * powerunits_MW
 
             DuckDB.append(appender.dispatches, iter)
-            DuckDB.append(appender.dispatches, system.period.name)
-            DuckDB.append(appender.dispatches, i)
+            DuckDB.append(appender.dispatches, dispatch.period.name)
+            DuckDB.append(appender.dispatches, h)
             DuckDB.append(appender.dispatches, name(gen))
-            DuckDB.append(appender.dispatches, dispatch)
+            DuckDB.append(appender.dispatches, dispatch_val)
             DuckDB.end_row(appender.dispatches)
 
         end
 
-        for gen in system.variabletechs
+        for gen in dispatch.variabletechs
 
-            dispatch = value(gen.dispatch[i]) * powerunits_MW
+            dispatch_val = value(gen.dispatch[h]) * powerunits_MW
 
             DuckDB.append(appender.dispatches, iter)
-            DuckDB.append(appender.dispatches, system.period.name)
-            DuckDB.append(appender.dispatches, i)
+            DuckDB.append(appender.dispatches, dispatch.period.name)
+            DuckDB.append(appender.dispatches, h)
             DuckDB.append(appender.dispatches, name(gen))
-            DuckDB.append(appender.dispatches, dispatch)
+            DuckDB.append(appender.dispatches, dispatch_val)
             DuckDB.end_row(appender.dispatches)
 
         end
 
-        for stor in system.storagetechs
+        for stor in dispatch.storagetechs
 
-            dispatch = value(stor.dispatch[i]) * powerunits_MW
+            dispatch_val = value(stor.dispatch[h]) * powerunits_MW
 
             DuckDB.append(appender.dispatches, iter)
-            DuckDB.append(appender.dispatches, system.period.name)
-            DuckDB.append(appender.dispatches, i)
+            DuckDB.append(appender.dispatches, dispatch.period.name)
+            DuckDB.append(appender.dispatches, h)
             DuckDB.append(appender.dispatches, name(stor))
-            DuckDB.append(appender.dispatches, dispatch)
+            DuckDB.append(appender.dispatches, dispatch_val)
             DuckDB.end_row(appender.dispatches)
 
         end

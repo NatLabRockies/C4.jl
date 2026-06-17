@@ -5,8 +5,8 @@ import JuMP: @variable, @constraint, @expression, @objective, value
 
 import IterTools: zip_longest
 
-import ..ThermalTechnology, ..VariableTechnology, ..StorageTechnology,
-       ..System,
+import ..DispatchableThermalTech, ..DispatchableVariableTech,
+       ..DispatchableStorageTech, ..DispatchableSystem,
        ..JuMP_ExpressionRef, ..JuMP_LessThanConstraintRef,
        ..JuMP_GreaterThanConstraintRef, ..JuMP_EqualToConstraintRef, ..varnames!,
        ..availablecapacity, ..nameplatecapacity, ..maxpower, ..maxenergy,
@@ -15,14 +15,21 @@ import ..ThermalTechnology, ..VariableTechnology, ..StorageTechnology,
        ..name, ..cost, ..co2, ..cost_generation, ..cost_startup,
        ..co2_generation, ..co2_startup, ..demand,
        ..variabletechs, ..storagetechs, ..thermaltechs,
-       ..solve!, ..powerunits_MW
+       ..solve!, ..powerunits_MW, ..N_HOURS_IN_DAY
 
 using ..Data
 
+include("time.jl")
+include("representative_periods.jl")
 include("dispatch.jl")
 include("sequencing.jl")
 
-export DispatchProblem, DispatchSequence
+export DispatchProblem, DispatchSequence, DispatchDay, DispatchProxyMapping,
+       singleperiod, seasonalperiods, monthlyperiods, weeklyperiods,
+       seasonalperiods_byyear, monthlyperiods_byyear, weeklyperiods_byyear,
+       dailyperiods, fullchronologyperiods,
+       n_decision_days, n_represented_days, n_decision_hours,
+       n_represented_hours, annualization_factor
 
 struct DispatchProblem{D<:DispatchSequence}
 
@@ -33,21 +40,16 @@ struct DispatchProblem{D<:DispatchSequence}
     dispatch::D
 
     function DispatchProblem(
-        system::SystemParams, periods::TimeProxyAssignment,
-        optimizer; voll::Float64=NaN
+        system::SystemParams, periods::DispatchProxyMapping,
+        optimizer; voll::Float64=NaN, unit_commitment::Bool=true
     )
-
-        n_timesteps = length(system.timesteps)
-
-        timestepcount(periods) == n_timesteps ||
-            error("Period assignment is incompatible with system timesteps")
 
         m = JuMP.direct_model(optimizer)
 
-        dispatch = DispatchSequence(m, system, periods, voll)
+        dispatch = DispatchSequence(m, system, periods, voll,
+                                    unit_commitment=unit_commitment)
 
-        opex_scalar = 8766 / n_timesteps
-        @objective(m, Min, opex_scalar * cost(dispatch))
+        @objective(m, Min, annualization_factor(periods) * cost(dispatch))
 
         return new{typeof(dispatch)}(m, system, dispatch)
 
@@ -67,7 +69,7 @@ function solve!(prob::DispatchProblem)
 end
 
 cost(prob::DispatchProblem) =
-    8766 / length(prob.system.timesteps) * cost(prob.dispatch)
+    annualization_factor(prob.dispatch.time) * cost(prob.dispatch)
 
 include("export.jl")
 

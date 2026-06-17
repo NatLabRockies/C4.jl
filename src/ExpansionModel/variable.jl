@@ -1,4 +1,4 @@
-struct VariableSiteExpansion <: VariableSite
+struct VariableSiteExpansion <: DispatchableVariableSite
 
     params::VariableCandidateSiteParams
     capacity_new::JuMP.VariableRef
@@ -8,7 +8,7 @@ struct VariableSiteExpansion <: VariableSite
         techparams::VariableCandidateParams)
 
         fullname = join([techparams.name, siteparams.name], ",")
-        capacity_new = @variable(m, lower_bound=0, upper_bound=siteparams.capacity_max)
+        capacity_new = @variable(m, lower_bound=0, upper_bound=siteparams.capacity_max[1])
         JuMP.set_name(capacity_new, "variable_new_capacity[$fullname]")
         new(siteparams, capacity_new)
 
@@ -16,20 +16,24 @@ struct VariableSiteExpansion <: VariableSite
 
 end
 
-nameplatecapacity(site::VariableSiteExpansion) = site.capacity_new
+function nameplatecapacity(site::VariableSiteExpansion, i::Int=1)
+    i != 1 && error("Only data for the first investment year is available")
+    return site.capacity_new
+end
 
-availability(site::VariableSiteExpansion, t::Int) = site.params.availability[t]
+availability(site::VariableSiteExpansion, i::Int, d::Int, h::Int) =
+    site.params.availability[h, d, i]
 
 VariableExistingSiteParams(build::VariableSiteExpansion) =
     VariableExistingSiteParams(
         build.params.name,
-        value(build.capacity_new),
+        [value(build.capacity_new)],
         build.params.availability)
 
 VariableCandidateSiteParams(build::VariableSiteExpansion) =
     VariableCandidateSiteParams(
         build.params.name,
-        build.params.capacity_max - value(build.capacity_new),
+        [build.params.capacity_max[1] - value(build.capacity_new)],
         build.params.availability)
 
 function warmstart_builds!(build::VariableSiteExpansion, prev_build::VariableSiteExpansion)
@@ -38,7 +42,7 @@ function warmstart_builds!(build::VariableSiteExpansion, prev_build::VariableSit
 end
 
 
-struct VariableExpansion <: VariableTechnology
+struct VariableExpansion <: DispatchableVariableTech
 
     params::VariableCandidateParams
     sites::Vector{VariableSiteExpansion}
@@ -57,15 +61,15 @@ end
 
 sites(tech::VariableExpansion) = tech.sites
 
-cost_generation(tech::VariableExpansion) = tech.params.cost_generation
+cost_generation(tech::VariableExpansion, invyear::Int=1) = tech.params.cost_vom[invyear]
 
-cost(build::VariableExpansion) =
-    nameplatecapacity(build) * build.params.cost_capital
+cost(build::VariableExpansion, invyear::Int=1) =
+    nameplatecapacity(build, invyear) * build.params.cost_capital[invyear]
 
 VariableExistingParams(build::VariableExpansion) = VariableExistingParams(
     build.params.name,
     build.params.category,
-    build.params.cost_generation,
+    build.params.cost_vom,
     VariableExistingSiteParams.(build.sites)
 )
 
@@ -73,6 +77,6 @@ VariableCandidateParams(build::VariableExpansion) = VariableCandidateParams(
     build.params.name,
     build.params.category,
     build.params.cost_capital,
-    build.params.cost_generation,
+    build.params.cost_vom,
     VariableCandidateSiteParams.(build.sites)
 )

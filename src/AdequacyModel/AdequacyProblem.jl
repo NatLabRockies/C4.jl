@@ -7,7 +7,7 @@ struct AdequacyProblem
 
     function AdequacyProblem(sys::SystemParams; samples::Int)
 
-        demand = sys.demand .* powerunits_MW
+        demand = vec(sys.demand[:, :, 1]) .* powerunits_MW
 
         generators_capacity, generators_lambda, generators_mu =
             load_generators(sys)
@@ -27,7 +27,7 @@ end
 
 function load_generators(sys::SystemParams)
 
-    n_timesteps = length(sys.timesteps)
+    n_timesteps = n_dispatch_hours(sys.times)
     n_gens, has_variable = count_gens(sys)
 
     generators_capacity = Matrix{Float64}(undef, n_gens, n_timesteps)
@@ -37,13 +37,13 @@ function load_generators(sys::SystemParams)
     g_last = 0
 
     for tech in sys.thermaltechs_existing
+        tech_ratedcap = vec(tech.rating[:, :, 1]) .* tech.unit_size .* powerunits_MW
         for site in tech.sites
-            for _ in 1:site.units
+            for _ in 1:site.units[1]
                 g_last += 1
-                generators_capacity[g_last, :] .=
-                    site.rating .* tech.unit_size .* powerunits_MW
-                generators_lambda[:, g_last] .= site.λ
-                generators_mu[:, g_last] .= site.μ
+                generators_capacity[g_last, :] .= tech_ratedcap
+                generators_lambda[:, g_last] .= vec(site.λ[:, :, 1])
+                generators_mu[:, g_last] .= vec(site.μ[:, :, 1])
             end
         end
     end
@@ -54,7 +54,8 @@ function load_generators(sys::SystemParams)
 
         for tech in sys.variabletechs_existing
             for site in tech.sites
-                variable_capacity .+= site.capacity .* powerunits_MW .* site.availability
+                variable_capacity .+=
+                    site.capacity[1] .* powerunits_MW .* vec(site.availability[:, :, 1])
             end
         end
 
@@ -80,7 +81,7 @@ function count_gens(sys::SystemParams)
 
     for tech in sys.thermaltechs_existing
         for site in tech.sites
-            n_gens += site.units
+            n_gens += site.units[1]
         end
     end
 
@@ -119,13 +120,14 @@ end
 
 struct AdequacyResult
 
-    timestamps::StepRange{DateTime,Hour}
+    times::TimeIndices
 
-    demand::Vector{Float64}
-    lolps::Vector{Float64}
-    eues::Vector{Float64}
+    demand::Matrix{Float64} # N_HOURS_IN_DAY x n_days
+    lolps::Matrix{Float64} # N_HOURS_IN_DAY x n_days
+    eues::Matrix{Float64} # N_HOURS_IN_DAY x n_days
 
-    generation_dEUEs::Vector{Float64} # n_timesteps
+    generation_dEUEs::Matrix{Float64} # N_HOURS_IN_DAY x n_dayss
+
     storage_power_dEUEs::Vector{Float64} # n_storages
     storage_energy_dEUEs::Vector{Float64} # n_storages
 
@@ -135,13 +137,20 @@ function solve(prob::AdequacyProblem)
 
     result = solve(prob.params, samples=prob.samples)
 
+    n_days = n_dispatch_days(prob.sys.times)
+
+    demand = reshape(result.demand, N_HOURS_IN_DAY, n_days)
+    lolps = reshape(result.lolps, N_HOURS_IN_DAY, n_days)
+    eues = reshape(result.eues, N_HOURS_IN_DAY, n_days)
+    generation_dEUEs = reshape(result.generation_dEUEs, N_HOURS_IN_DAY, n_days)
+
     ip = invperm(prob.storage_permutation)
     stor_power_dEUE = sum(result.storage_power_dEUEs, dims=1)[ip]
     stor_energy_dEUE = sum(result.storage_energy_dEUEs, dims=1)[ip]
 
     return AdequacyResult(
-        prob.sys.timesteps, result.demand, result.lolps, result.eues,
-        result.generation_dEUEs, stor_power_dEUE, stor_energy_dEUE)
+        prob.sys.times, demand, lolps, eues, generation_dEUEs,
+        stor_power_dEUE, stor_energy_dEUE)
 
 end
 

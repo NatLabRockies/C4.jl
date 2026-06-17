@@ -28,8 +28,8 @@ display(sys)
 
 timestamp = Dates.format(now(), "yyyymmddHHMMSS")
 
-fullchrono = fullchronologyperiods(sys, daylength=2)
-repeatedchrono = singleperiod(sys, daylength=2)
+fullchrono = fullchronologyperiods(sys)
+repeatedchrono = singleperiod(sys)
 null_eue = EUECuttingPlaneParams[]
 
 voll = 9000.
@@ -49,8 +49,6 @@ max_neue = 10.
 ram = AdequacyProblem(sys, samples=1000)
 ram_results = solve(ram)
 println("\nBase NEUE = ", neue(ram_results))
-println("LOLPs: ", ram_results.lolps)
-println("EUEs: ", ram_results.eues)
 
 # Formulate and solve a one-off CEM without risk curves
 
@@ -67,8 +65,6 @@ println("System Cost: ", value(cost(cem)))
 ram = AdequacyProblem(sys_built, samples=1000)
 ram_results = solve(ram) # Dig into these results
 println("\nNEUE = ", neue(ram_results))
-println("LOLPs: ", ram_results.lolps)
-println("EUEs: ", ram_results.eues)
 
 eue_params = [EUECuttingPlaneParams(cem.builds, ram_results)]
 
@@ -83,8 +79,6 @@ println("System Cost: ", value(cost(cem)))
 ram = AdequacyProblem(sys_built, samples=1000)
 ram_results = solve(ram)
 println("\nNEUE = ", neue(ram_results))
-println("LOLPs: ", ram_results.lolps)
-println("EUEs: ", ram_results.eues)
 
 push!(eue_params, EUECuttingPlaneParams(cem.builds, ram_results))
 
@@ -99,21 +93,18 @@ println("System Cost: ", value(cost(cem)))
 ram = AdequacyProblem(sys_built, samples=1000)
 ram_results = solve(ram)
 println("\nNEUE = ", neue(ram_results))
-println("LOLPs: ", ram_results.lolps)
-println("EUEs: ", ram_results.eues)
 
 println("\nSingle-region Iterative CEM:")
 cem, ram, pcm = iterate_ra_cem(
     sys, repeatedchrono, max_neue, optimizer,
     nsamples=100_000, check_dispatch=false, check_dispatch_voll=voll,
-    outfile=timestamp * ".db")
+    outfile=timestamp * ".db", unit_commitment=true,
+    max_co2_intensity=50., co2_offset_price=100.)
 
 sys_built = SystemParams(cem)
 display(sys_built)
-println("LOLPs: ", ram.lolps)
-println("EUEs: ", ram.eues)
-println("NEUE: ", neue(ram))
 
+println("NEUE: ", neue(ram))
 println("Capex: ", value(capex(cem)))
 println("Opex: ", value(opex(cem)))
 println("Carbon Offsets Cost: ", value(carbon_offset_cost(cem)))
@@ -127,6 +118,7 @@ ram = AdequacyProblem(sys_built, samples=100_000)
 ram_results = solve(ram)
 println("\nNEUE = ", neue(ram_results))
 
-pcm = DispatchProblem(sys_built, fullchrono, optimizer, voll=voll)
+pcm = DispatchProblem(sys_built, repeatedchrono, optimizer, voll=voll,
+                      unit_commitment=true)
 solve!(pcm)
 println("Operating Cost: ", value(cost(pcm)))

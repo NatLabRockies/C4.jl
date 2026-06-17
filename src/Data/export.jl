@@ -33,12 +33,11 @@ function store(con::DuckDB.DB, sys::SystemParams)
         ('storage')")
 
     DBInterface.execute(con, "CREATE TABLE techs (
-        tech TEXT,
+        tech TEXT PRIMARY KEY,
         techtype TEXT REFERENCES techtypes (techtype),
         cost_generation DOUBLE,
         cost_capital_power DOUBLE,
-        cost_capital_energy DOUBLE,
-        PRIMARY KEY (tech)
+        cost_capital_energy DOUBLE
     )")
 
     DBInterface.execute(con, "CREATE TABLE sites (
@@ -82,7 +81,7 @@ function store(
 
     DuckDB.append(appender.techs, tech.name)
     DuckDB.append(appender.techs, "variable")
-    DuckDB.append(appender.techs, tech.cost_generation / powerunits_MW)
+    DuckDB.append(appender.techs, tech.cost_vom[1] / powerunits_MW)
     DuckDB.append(appender.techs, nothing)
     DuckDB.append(appender.techs, nothing)
     DuckDB.end_row(appender.techs)
@@ -97,8 +96,8 @@ function store(
 
     DuckDB.append(appender.techs, tech.name)
     DuckDB.append(appender.techs, "variable")
-    DuckDB.append(appender.techs, tech.cost_generation / powerunits_MW)
-    DuckDB.append(appender.techs, tech.cost_capital / powerunits_MW)
+    DuckDB.append(appender.techs, tech.cost_vom[1] / powerunits_MW)
+    DuckDB.append(appender.techs, tech.cost_capital[1] / powerunits_MW)
     DuckDB.append(appender.techs, nothing)
     DuckDB.end_row(appender.techs)
 
@@ -128,7 +127,7 @@ function store(
     DuckDB.append(appender.techs, tech.name)
     DuckDB.append(appender.techs, "thermal")
     DuckDB.append(appender.techs, cost_generation(tech) / powerunits_MW)
-    DuckDB.append(appender.techs, tech.cost_capital / powerunits_MW)
+    DuckDB.append(appender.techs, tech.cost_capital[1] / powerunits_MW)
     DuckDB.append(appender.techs, nothing)
     DuckDB.end_row(appender.techs)
 
@@ -142,7 +141,7 @@ function store(appender::DataAppender, stor::StorageExistingParams)
 
     DuckDB.append(appender.techs, stor.name)
     DuckDB.append(appender.techs, "storage")
-    DuckDB.append(appender.techs, stor.cost_operation / powerunits_MW)
+    DuckDB.append(appender.techs, stor.cost_vom[1] / powerunits_MW)
     DuckDB.append(appender.techs, nothing)
     DuckDB.append(appender.techs, nothing)
     DuckDB.end_row(appender.techs)
@@ -155,9 +154,9 @@ function store(appender::DataAppender, stor::StorageCandidateParams)
 
     DuckDB.append(appender.techs, name(stor))
     DuckDB.append(appender.techs, "storage")
-    DuckDB.append(appender.techs, stor.cost_operation / powerunits_MW)
-    DuckDB.append(appender.techs, stor.cost_capital_power / powerunits_MW)
-    DuckDB.append(appender.techs, stor.cost_capital_energy / powerunits_MW)
+    DuckDB.append(appender.techs, stor.cost_vom[1] / powerunits_MW)
+    DuckDB.append(appender.techs, stor.cost_capital_power[1] / powerunits_MW)
+    DuckDB.append(appender.techs, stor.cost_capital_energy[1] / powerunits_MW)
     DuckDB.end_row(appender.techs)
 
     DuckDB.append(appender.sites, "")

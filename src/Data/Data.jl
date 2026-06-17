@@ -4,27 +4,24 @@ using Dates, DelimitedFiles
 
 import Base: length
 
-import ..VariableSite, ..Technology,
-       ..ThermalTechnology, ..VariableTechnology, ..StorageTechnology,
-       ..System, ..cost_generation, ..cost_startup,
+import ..DispatchableVariableSite, ..DispatchableTech,
+       ..DispatchableThermalTech, ..DispatchableVariableTech, ..DispatchableStorageTech,
+       ..DispatchableSystem, ..cost_generation, ..cost_startup,
        ..maxpower, ..maxenergy, ..roundtrip_efficiency, ..operating_cost,
        ..max_unit_ramp, ..num_units, ..unit_size, ..min_gen, ..min_uptime, ..min_downtime,
        ..co2_startup, ..co2_generation,
        ..name, ..variabletechs, ..storagetechs, ..thermaltechs,
        ..sites, ..availability, ..nameplatecapacity, ..availablecapacity,
-       ..demand, ..powerunits_MW
+       ..demand, ..powerunits_MW, ..N_HOURS_IN_DAY
 
-export TimePeriod, TimeProxyAssignment,
+export TimeIndices,
        ThermalExistingParams, ThermalExistingSiteParams, ThermalCandidateParams,
        VariableExistingParams, VariableExistingSiteParams,
        VariableCandidateParams, VariableCandidateSiteParams,
        StorageExistingParams, StorageExistingSiteParams, StorageCandidateParams,
-       RegionParams, InterfaceParams, SystemParams,
-       timestepcount, total_demand,
-       singleperiod,
-       seasonalperiods, monthlyperiods, weeklyperiods,
-       seasonalperiods_byyear, monthlyperiods_byyear, weeklyperiods_byyear,
-       dailyperiods, fullchronologyperiods,
+       SystemParams, total_demand,
+       year_dayofyear, days, n_investment_years, n_dispatch_years,
+       n_dispatch_days, n_dispatch_hours,
        store_iteration, store_iteration_step
 
 include("time.jl")
@@ -33,12 +30,7 @@ include("thermal.jl")
 include("variable.jl")
 include("storage.jl")
 
-include("sites.jl")
-include("technologies.jl")
-
 include("system.jl")
-
-include("representative_periods.jl")
 
 include("import.jl")
 include("export.jl")

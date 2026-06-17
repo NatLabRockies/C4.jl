@@ -49,13 +49,15 @@ function store(con::DBInterface.Connection, iter::Int, result::AdequacyResult)
 
     DBInterface.execute(con, "CREATE TABLE IF NOT EXISTS timestep_adequacies (
         iteration INTEGER REFERENCES iterations(id),
-        timestep TIMESTAMP,
+        year INTEGER,
+        dayofyear INTEGER,
+        hourofday INTEGER,
         demand DOUBLE,
         eue DOUBLE,
         eue_std DOUBLE,
         lole DOUBLE,
         lole_std DOUBLE,
-        PRIMARY KEY (iteration, timestep)
+        PRIMARY KEY (iteration, year, dayofyear, hourofday)
     )")
 
     appender = AdequacyAppender(con)
@@ -72,17 +74,21 @@ function store(con::DBInterface.Connection, iter::Int, result::AdequacyResult)
     DuckDB.append(appender.adequacies, nothing)
     DuckDB.end_row(appender.adequacies)
 
-    for (t, timestamp) in enumerate(result.timestamps)
+    for (d, (year, dayofyear)) in enumerate(days(result.times))
+        for hourofday in 1:N_HOURS_IN_DAY
 
-        DuckDB.append(appender.timestep_adequacies, iter)
-        DuckDB.append(appender.timestep_adequacies, DateTime(timestamp))
-        DuckDB.append(appender.timestep_adequacies, result.demand[t])
-        DuckDB.append(appender.timestep_adequacies, result.eues[t])
-        DuckDB.append(appender.timestep_adequacies, nothing)
-        DuckDB.append(appender.timestep_adequacies, result.lolps[t])
-        DuckDB.append(appender.timestep_adequacies, nothing)
-        DuckDB.end_row(appender.timestep_adequacies)
+            DuckDB.append(appender.timestep_adequacies, iter)
+            DuckDB.append(appender.timestep_adequacies, year)
+            DuckDB.append(appender.timestep_adequacies, dayofyear)
+            DuckDB.append(appender.timestep_adequacies, hourofday)
+            DuckDB.append(appender.timestep_adequacies, result.demand[hourofday, d])
+            DuckDB.append(appender.timestep_adequacies, result.eues[hourofday, d])
+            DuckDB.append(appender.timestep_adequacies, nothing)
+            DuckDB.append(appender.timestep_adequacies, result.lolps[hourofday, d])
+            DuckDB.append(appender.timestep_adequacies, nothing)
+            DuckDB.end_row(appender.timestep_adequacies)
 
+        end
     end
 
     DuckDB.close(appender)

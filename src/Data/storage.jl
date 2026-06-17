@@ -1,44 +1,46 @@
 struct StorageExistingSiteParams
     name::String
-    power::Float64 # MW
+    capacity::InvestmentDataArray{Float64} # MW
 end
 
-struct StorageExistingParams <: StorageTechnology
+struct StorageExistingParams <: DispatchableStorageTech
 
     name::String
     category::String
 
-    cost_operation::Float64 # $/MWh
+    duration::Float64 # hours
     roundtrip_efficiency::Float64
 
-    duration::Float64 # hours
+    cost_vom::InvestmentDataArray{Float64} # $/MWh
 
     sites::Vector{StorageExistingSiteParams}
 
 end
 
-maxpower(tech::StorageExistingParams) =
-    sum(site.power for site in tech.sites; init=0)
+tech(::Type{StorageExistingSiteParams}) = StorageExistingParams
 
-maxenergy(tech::StorageExistingParams) = maxpower(tech) * tech.duration
+maxpower(tech::StorageExistingParams, i::Int=1) =
+    sum(site.capacity[i] for site in tech.sites; init=0)
+
+maxenergy(tech::StorageExistingParams, i::Int=1) = maxpower(tech, i) * tech.duration
 
 roundtrip_efficiency(tech::StorageExistingParams) = tech.roundtrip_efficiency
 
-operating_cost(tech::StorageExistingParams) = tech.cost_operation
+operating_cost(tech::StorageExistingParams, i::Int=1) = tech.cost_vom[i]
 
 struct StorageCandidateParams
 
     name::String
     category::String
 
-    cost_operation::Float64 # $/MWh
     roundtrip_efficiency::Float64
 
-    cost_capital_power::Float64 # annualized $/MW
-    cost_capital_energy::Float64 # annualized $/MWh
+    cost_vom::InvestmentDataArray{Float64} # $/MWh
+    cost_capital_power::InvestmentDataArray{Float64} # annualized $/MW
+    cost_capital_energy::InvestmentDataArray{Float64} # annualized $/MWh
 
-    power_max::Float64 # MW
-    energy_max::Float64 # MWh
+    power_max::InvestmentDataArray{Float64} # MW
+    energy_max::InvestmentDataArray{Float64} # MWh
     # could do a duration_max too?
 
 end

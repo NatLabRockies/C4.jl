@@ -1,3 +1,0 @@
-tech,category,fuel,heat_rate,startup_heat,cost_vom,cost_capital,max_units,unit_size,min_gen,max_ramp,min_uptime,min_downtime
-New Gas CT,Gas CT,Natural Gas,9.7,1457.4,6.94,80000,10,55,22,222,3,3
-New Gas CC,Gas CC,Natural Gas,6.2,7215.1,1.79,93400,10,355,170,250,8,5

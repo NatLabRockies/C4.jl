@@ -3,11 +3,13 @@ struct ThermalEUEReduction
     nameplate::Float64
     dEUE::Float64
 
-    function ThermalEUEReduction(build::ThermalExpansion, gen_dEUEs::Vector{Float64})
+    function ThermalEUEReduction(build::ThermalExpansion, gen_dEUEs::Matrix{Float64})
 
-        T = length(gen_dEUEs)
+        n_days = size(gen_dEUEs, 2)
+        dEUE = -sum(gen_dEUEs[h, d] * availability(build.params, 1, d, h)
+                    for h in 1:N_HOURS_IN_DAY, d in 1:n_days)
+
         nameplate = value(nameplatecapacity(build))
-        dEUE = -sum(gen_dEUEs[t] * availability(build.params, t) for t in 1:T)
 
         return new(nameplate, dEUE)
 
@@ -19,15 +21,18 @@ eue_adjustment(riskparams::ThermalEUEReduction, build::ThermalExpansion) =
     riskparams.dEUE * (nameplatecapacity(build) - riskparams.nameplate)
 
 struct VariableSiteEUEReduction
+
     nameplate::Float64
     dEUE::Float64
 
     function VariableSiteEUEReduction(
-        build::VariableSiteExpansion, gen_dEUEs::Vector{Float64})
+        build::VariableSiteExpansion, gen_dEUEs::Matrix{Float64})
 
-        T = length(gen_dEUEs)
+        n_days = size(gen_dEUEs, 2)
+        dEUE = -sum(gen_dEUEs[h, d] * availability(build, 1, d, h)
+                    for h in 1:N_HOURS_IN_DAY, d in 1:n_days)
+
         nameplate = value(nameplatecapacity(build))
-        dEUE = -sum(gen_dEUEs[t] * availability(build, t) for t in 1:T)
 
         return new(nameplate, dEUE)
 
@@ -42,7 +47,7 @@ struct VariableEUEReduction
 
     sites::Vector{VariableSiteEUEReduction}
 
-    function VariableEUEReduction(build::VariableExpansion, gen_dEUEs::Vector{Float64})
+    function VariableEUEReduction(build::VariableExpansion, gen_dEUEs::Matrix{Float64})
 
         sites = [VariableSiteEUEReduction(site, gen_dEUEs) for site in build.sites]
 

@@ -5,9 +5,9 @@ import JuMP: @variable, @constraint, @expression, @objective, value
 
 import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
         ..JuMP_ExpressionRef,
-        ..Site, ..VariableSite,
-        ..ThermalTechnology, ..VariableTechnology, ..StorageTechnology,
-        ..System, ..varnames!,
+        ..DispatchableSite, ..DispatchableVariableSite,
+        ..DispatchableThermalTech, ..DispatchableVariableTech, ..DispatchableStorageTech,
+        ..DispatchableSystem, ..varnames!,
         ..nameplatecapacity, ..availablecapacity, ..availability, ..maxpower, ..maxenergy,
         ..roundtrip_efficiency, ..operating_cost,
         ..name, ..variabletechs, ..storagetechs, ..thermaltechs,
@@ -15,7 +15,7 @@ import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
         ..cost_generation, ..cost_startup, ..co2_generation, ..co2_startup,
         ..max_unit_ramp, ..num_units, ..unit_size, ..min_gen,
         ..min_uptime, ..min_downtime,
-        ..demand, ..solve!
+        ..demand, ..solve!, ..N_HOURS_IN_DAY
 
 import ..Data: ThermalExistingParams, ThermalCandidateParams,
                VariableExistingParams, VariableExistingSiteParams,
@@ -45,29 +45,28 @@ mutable struct ExpansionProblem
 
     builds::SystemExpansion
 
-    economicdispatch::DispatchSequence{SystemExpansion}
+    dispatch::DispatchSequence{SystemExpansion}
 
     reliabilityconstraints::ReliabilityConstraints
 
     carbon_offset_price::Float64
-    carbon_offsets::Union{JuMP.VariableRef,Nothing} # in annual Megatonnes CO2
+    carbon_offsets::Union{JuMP.VariableRef,Nothing} # in annual tonnes CO2
     co2_constraint::Union{JuMP_LessThanConstraintRef,Nothing}
 
     function ExpansionProblem(
         system::SystemParams,
-        chronology::TimeProxyAssignment,
+        chronology::DispatchProxyMapping,
         riskparams::Vector{EUECuttingPlaneParams},
         eue_max::Float64, # in powerunits_MWh
-        co2_max::Float64, # in annual Megatonnes CO2
+        co2_max::Float64, # in annual tonnes CO2
         carbon_offset_price::Float64, # $/tonne CO2
         optimizer;
         unit_commitment::Bool=true
     )
 
-        n_timesteps = length(system.timesteps)
-
-        timestepcount(chronology) == n_timesteps ||
-            error("Time period assignment is incompatible with system timesteps")
+        n_represented_hours(chronology) == n_dispatch_hours(system.times) ||
+            error("Time period dispatch proxy assignment is incompatible " *
+                  "with system timesteps")
 
         m = JuMP.direct_model(optimizer)
 
@@ -85,14 +84,11 @@ mutable struct ExpansionProblem
             carbon_offsets = @variable(m, lower_bound=0)
             co2_constraint = @constraint(m,
                 co2(economicdispatch) - carbon_offsets <= co2_max)
-            # convert $/tonne to $/Megatonne
-            carbon_offset_cost = (carbon_offset_price * 1e6) * carbon_offsets
+            carbon_offset_cost = carbon_offset_price * carbon_offsets
         end
 
-        annualization_factor = 8766 / n_timesteps
-
         @objective(m, Min,
-            cost(builds) + annualization_factor *
+            cost(builds) + annualization_factor(chronology) *
                 (cost(economicdispatch) + carbon_offset_cost)
         )
 
@@ -128,7 +124,7 @@ function SystemParams(prob::ExpansionProblem)
             params.storagetechs_existing)
 
     return SystemParams(
-        params.name, params.timesteps, params.demand, params.fuels,
+        params.name, params.times, params.demand, params.fuels,
         thermal_existing,
         ThermalCandidateParams.(build.thermaltechs),
         variable_existing,
@@ -151,7 +147,7 @@ end
 
 # Capex is annualized, so scale opex to approximate an annual cost
 opex(prob::ExpansionProblem) =
-    8766 / length(prob.system.timesteps) * cost(prob.economicdispatch)
+    annualization_factor(prob.dispatch.time) * cost(prob.dispatch)
 
 capex(prob::ExpansionProblem) = cost(prob.builds)
 
@@ -161,8 +157,8 @@ function carbon_offset_cost(prob::ExpansionProblem)
     if isnothing(prob.carbon_offsets)
         0
     else
-        annualization_factor = 8766 / length(prob.system.timesteps)
-        annualization_factor * (prob.carbon_offset_price * 1e6) * prob.carbon_offsets
+        annualization_factor(prob.dispatch.time) *
+            prob.carbon_offset_price * prob.carbon_offsets
     end
 
 end
@@ -170,19 +166,17 @@ end
 cost(prob::ExpansionProblem) = capex(prob) + opex(prob) + carbon_offset_cost(prob)
 
 """
-CO2 emissions in annualized Megatonnes
+CO2 emissions in annualized tonnes
 """
 co2(prob::ExpansionProblem) =
-    8766 / length(prob.system.timesteps) * co2(prob.economicdispatch)
+    annualization_factor(prob.dispatch.time) * co2(prob.dispatch)
 
 function lcoe(prob::ExpansionProblem)
 
-    # Scale demand to an approximate annual value to compare to annualized costs
-    demand_scaler = 8766 / length(prob.system.timesteps)
-
-    # Note: total demand here is the full-chronology demand,
+    # Note: total demand used here is the full-chronology demand annualized,
     #       not necessarily what economic dispatch sees
-    demand = total_demand(prob.system) * powerunits_MW * demand_scaler
+    demand = total_demand(prob.system) * powerunits_MW *
+        annualization_factor(prob.dispatch.time)
 
     return cost(prob) / demand
 
@@ -191,8 +185,17 @@ end
 """
 System emissions intensity in kg/MWh (g/kWh)
 """
-emissions_intensity(prob::ExpansionProblem) =
-    co2(prob.economicdispatch) / (total_demand(prob.system) * powerunits_MW) * 1e9
+function emissions_intensity(prob::ExpansionProblem)
+
+    # Note: total demand used here is the full-chronology demand annualized,
+    #       not necessarily what economic dispatch sees
+    demand = total_demand(prob.system) * powerunits_MW *
+        annualization_factor(prob.dispatch.time)
+
+    # Convert CO2 from tonnes to kg
+    return co2(prob) * 1e3 / demand
+
+end
 
 function warmstart_builds!(prob::ExpansionProblem, prev_prob::ExpansionProblem)
     warmstart_builds!.(prob.builds.thermaltechs, prev_prob.builds.thermaltechs)

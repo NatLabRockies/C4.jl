@@ -1,4 +1,4 @@
-struct ThermalDispatch{G<:ThermalTechnology}
+struct ThermalDispatch{G<:DispatchableThermalTech}
 
     dispatch::Vector{JuMP.VariableRef}
     units_committed::Vector{JuMP.VariableRef}
@@ -17,12 +17,11 @@ struct ThermalDispatch{G<:ThermalTechnology}
     tech::G
 
     function ThermalDispatch(
-        m::JuMP.Model, tech::G, period::TimePeriod;
+        m::JuMP.Model, tech::G, period::DispatchDay;
         unit_commitment::Bool=true
-    ) where G <: ThermalTechnology
+    ) where G <: DispatchableThermalTech
 
-        T = length(period)
-        ts = period.timesteps
+        T = N_HOURS_IN_DAY
 
         dispatch = @variable(m, [1:T], lower_bound = 0)
         fullname = join([name(tech), period.name], ",")
@@ -67,8 +66,12 @@ struct ThermalDispatch{G<:ThermalTechnology}
 
         else
 
+            # TODO: This should probably be a whole other dispatch struct
+            #       that shares an abstract ThermalDispatch parent with the
+            #       UC case
+
             # No UC: dispatch-only, bounded by nameplatecapacity.
-            # No commitment vars, no startup/shutdown, no ramp limits.
+            # No commitment vars, no startup/shutdown
             units_committed     = JuMP.VariableRef[]
             units_startup       = JuMP.VariableRef[]
             units_shutdown      = JuMP.VariableRef[]
@@ -98,11 +101,11 @@ struct ThermalDispatch{G<:ThermalTechnology}
 end
 
 cost(dispatch::ThermalDispatch) =
-    (isempty(dispatch.units_startup) ? 0 : cost_startup(dispatch.tech) * sum(dispatch.units_startup)) +
+    cost_startup(dispatch.tech) * sum(dispatch.units_startup, init=0) +
     cost_generation(dispatch.tech) * sum(dispatch.dispatch)
 
 co2(dispatch::ThermalDispatch) =
-    (isempty(dispatch.units_startup) ? 0 : co2_startup(dispatch.tech) * sum(dispatch.units_startup)) +
+    co2_startup(dispatch.tech) * sum(dispatch.units_startup, init=0) +
     co2_generation(dispatch.tech) * sum(dispatch.dispatch)
 
 name(dispatch::ThermalDispatch) = name(dispatch.tech)
@@ -119,7 +122,7 @@ function last_n(t::Int, n::Int, T::Int)
 end
 
 
-struct StorageDispatch{S<:StorageTechnology}
+struct StorageDispatch{S<:DispatchableStorageTech}
 
     charge::Vector{JuMP.VariableRef}
     discharge::Vector{JuMP.VariableRef}
@@ -140,9 +143,9 @@ struct StorageDispatch{S<:StorageTechnology}
     stor::S
 
     function StorageDispatch(
-        m::JuMP.Model, stor::S, period::TimePeriod) where S <: StorageTechnology
+        m::JuMP.Model, stor::S, period::DispatchDay) where S <: DispatchableStorageTech
 
-        T = length(period)
+        T = N_HOURS_IN_DAY
 
         charge = @variable(m, [1:T], lower_bound = 0)
         fullname = join([name(stor), period.name], ",")
@@ -188,7 +191,7 @@ usage(dispatch::StorageDispatch) =
 cost(dispatch::StorageDispatch) =
     usage(dispatch) * operating_cost(dispatch.stor)
 
-struct VariableDispatch{V<:VariableTechnology}
+struct VariableDispatch{V<:DispatchableVariableTech}
 
     dispatch::Vector{JuMP.VariableRef}
     dispatch_max::Vector{JuMP_LessThanConstraintRef}
@@ -196,18 +199,17 @@ struct VariableDispatch{V<:VariableTechnology}
     tech::V
 
     function VariableDispatch(
-        m::JuMP.Model, tech::V, period::TimePeriod
-    ) where V <: VariableTechnology
+        m::JuMP.Model, tech::V, period::DispatchDay
+    ) where V <: DispatchableVariableTech
 
-        T = length(period)
-        ts = period.timesteps
+        d = period.dispatchday_idx
 
-        dispatch = @variable(m, [1:T], lower_bound = 0)
+        dispatch = @variable(m, [1:N_HOURS_IN_DAY], lower_bound = 0)
         fullname = join([name(tech), period.name], ",")
-        varnames!(dispatch, "tech_dispatch[$(fullname)]", 1:T)
+        varnames!(dispatch, "tech_dispatch[$(fullname)]", 1:N_HOURS_IN_DAY)
 
-        dispatch_max = @constraint(m, [t in 1:T],
-            dispatch[t] <= availablecapacity(tech, ts[t]))
+        dispatch_max = @constraint(m, [h in 1:N_HOURS_IN_DAY],
+            dispatch[h] <= availablecapacity(tech, 1, d, h))
 
         return new{V}(dispatch, dispatch_max, tech)
 
@@ -221,9 +223,9 @@ cost(dispatch::VariableDispatch) =
 name(dispatch::VariableDispatch) = name(dispatch.tech)
 
 
-struct SystemDispatch{S<:System}
+struct SystemDispatch{S<:DispatchableSystem}
 
-    period::TimePeriod
+    period::DispatchDay
 
     thermaltechs::Vector{ThermalDispatch}
     variabletechs::Vector{VariableDispatch}
@@ -237,12 +239,11 @@ struct SystemDispatch{S<:System}
     system::S
 
     function SystemDispatch(
-        m::JuMP.Model, system::S, period::TimePeriod, voll::Float64;
+        m::JuMP.Model, system::S, period::DispatchDay, voll::Float64;
         unit_commitment::Bool=true
-    ) where { S <: System }
+    ) where { S <: DispatchableSystem }
 
-        n_timesteps = length(period)
-        ts = period.timesteps
+        d = period.dispatchday_idx
 
         thermaldispatch = [ThermalDispatch(m, tech, period, unit_commitment=unit_commitment)
                            for tech in thermaltechs(system)]
@@ -253,14 +254,14 @@ struct SystemDispatch{S<:System}
         storagedispatch = [StorageDispatch(m, tech, period)
                            for tech in storagetechs(system)]
 
-        unserved_energy = isnan(voll) ? nothing : @variable(m, [1:n_timesteps], lower_bound=0)
+        unserved_energy = isnan(voll) ? nothing : @variable(m, [1:N_HOURS_IN_DAY], lower_bound=0)
 
-        powerbalance = @constraint(m, [t in 1:n_timesteps],
-                demand(system, ts[t]) ==
-                sum(gen.dispatch[t] for gen in thermaldispatch)
-                + sum(gen.dispatch[t] for gen in variabledispatch)
-                + sum(stor.dispatch[t] for stor in storagedispatch)
-                + (isnan(voll) ? 0 : unserved_energy[t]))
+        powerbalance = @constraint(m, [h in 1:N_HOURS_IN_DAY],
+                demand(system, 1, d, h) ==
+                sum(gen.dispatch[h] for gen in thermaldispatch)
+                + sum(gen.dispatch[h] for gen in variabledispatch)
+                + sum(stor.dispatch[h] for stor in storagedispatch)
+                + (isnan(voll) ? 0 : unserved_energy[h]))
 
         new{S}(period, thermaldispatch, variabledispatch, storagedispatch,
                unserved_energy, voll, powerbalance, system)

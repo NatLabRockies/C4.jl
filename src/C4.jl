@@ -10,6 +10,7 @@ module C4
 #  - when writing results to disk
 
 const powerunits_MW = 100
+const N_HOURS_IN_DAY = 24
 
 include("types.jl")
 include("jump_utils.jl")

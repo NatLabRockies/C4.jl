@@ -10,7 +10,7 @@ function warmstart_builds!(
     return
 end
 
-struct SystemExpansion <: System
+struct SystemExpansion <: DispatchableSystem
 
     params::SystemParams
 
@@ -36,7 +36,12 @@ struct SystemExpansion <: System
 end
 
 name(system::SystemExpansion) = system.params.name
-demand(system::SystemExpansion, t::Int) = demand(system.params, t)
+
+demand(system::SystemExpansion, i::Int, d::Int, h::Int) =
+    demand(system.params, i, d, h)
+
+# demand(system::SystemExpansion, t::Int) =
+#     demand(system.params, t)
 
 cost(build::SystemExpansion) =
     sum(cost(thermaltech) for thermaltech in build.thermaltechs; init=0) +

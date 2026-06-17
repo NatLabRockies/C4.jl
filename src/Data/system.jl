@@ -1,10 +1,28 @@
-struct SystemParams <: System
+const SiteParams = Union{
+    ThermalExistingSiteParams,
+    VariableExistingSiteParams, VariableCandidateSiteParams,
+    StorageExistingSiteParams
+}
+
+name(site::SiteParams) = site.name
+
+const TechnologyParams = Union{
+    ThermalExistingParams, ThermalCandidateParams,
+    VariableExistingParams, VariableCandidateParams,
+    StorageExistingParams, StorageCandidateParams
+}
+
+name(tech::TechnologyParams) = tech.name
+
+const EntityParams = Union{TechnologyParams, SiteParams, FuelParams}
+
+struct SystemParams <: DispatchableSystem
 
     name::String
 
-    timesteps::StepRange{DateTime,Hour}
+    times::TimeIndices
 
-    demand::Vector{Float64}
+    demand::DispatchDataArray{Float64}
 
     fuels::Vector{FuelParams}
 
@@ -20,8 +38,11 @@ struct SystemParams <: System
 end
 
 name(sys::SystemParams) = sys.name
-demand(sys::SystemParams, t::Int) = sys.demand[t]
-total_demand(sys::SystemParams) = sum(sys.demand)
+
+demand(sys::SystemParams, invyear::Int, day::Int, hour::Int) =
+    sys.demand[hour, day, invyear]
+
+total_demand(sys::SystemParams, invyear::Int=1) = sum(sys.demand[:, :, invyear])
 
 thermaltechs(sys::SystemParams) = sys.thermaltechs_existing
 variabletechs(sys::SystemParams) = sys.variabletechs_existing
@@ -45,56 +66,40 @@ techs(sys::SystemParams, ::Type{StorageExistingParams}) =
 techs(sys::SystemParams, ::Type{StorageCandidateParams}) =
     sys.storagetechs_candidate
 
-get_tech(
-    sys::SystemParams,
-    techtype::Type{<:TechnologyParams},
-    techname::String
-) = last(getbyname(techs(sys, techtype), techname))
+sites(sys::SystemParams, sitetype::Type{<:SiteParams}) =
+    [site for tech in techs(sys, tech(sitetype)) for site in tech.sites]
 
-techset(system::SystemParams, techtype::Type{<:TechnologyParams}) =
-    Set(tech.name for tech in techs(system, techtype))
-
-function get_site(
-    system::SystemParams,
-    techtype::Type{<:TechnologyParams},
-    techname::String,
-    sitename::String
-)
-
-    tech = get_tech(system, techtype, techname)
-    return last(getbyname(tech.sites, sitename))
-
-end
-
-function techsiteset(system::SystemParams, techtype::Type{<:TechnologyParams})
-    result = Set{Tuple{String,String}}()
-    for tech in techs(system, techtype)
-        for site in tech.sites
-            push!(result, (tech.name, site.name))
-        end
-    end
-    return result
-end
-
-function getbyname(vals::Vector{T}, name::String) where T
+function get_entity(sys::SystemParams, entitytype::Type{<:EntityParams}, name::String)
+    vals = entities(sys, entitytype)
     i = findfirst(x -> x.name == name, vals)
     isnothing(i) && error("Could not find entity with name $name")
     return i, vals[i]
 end
 
-function daycount(sys::SystemParams, daylength::Int)
-    n_periods = length(sys.timesteps)
-    n_days, remainder = divrem(n_periods, daylength)
-    iszero(remainder) ||
-        error("SystemParams timesteps ($(n_periods)) should be a multiple of daylength ($(daylength))")
-    return n_days
-end
+entitynames(sys::SystemParams, entitytype::Type{<:EntityParams}) =
+    Set(entity.name for entity in entities(sys, entitytype))
 
+entities(sys::SystemParams, ::Type{FuelParams}) = sys.fuels
+
+entities(sys::SystemParams, techtype::Type{<:TechnologyParams}) =
+    techs(sys,  techtype)
+
+entities(sys::SystemParams, sitetype::Type{<:SiteParams}) =
+    sites(sys,  sitetype)
+
+# TODO - Show multi-investment-period data
 function Base.show(io::IO, ::MIME"text/plain", sys::SystemParams)
 
     println(io, "SystemParams for ", sys.name)
-    println(io, first(sys.timesteps), " -> ", last(sys.timesteps))
-    println(io, "Peak Load: ", maximum(sys.demand) * powerunits_MW, " MW")
+
+    n_invyears = length(sys.times.investment_years)
+    n_dispatchyears = length(sys.times.dispatch_daycount)
+    println(io, n_invyears, " investment years each with ",
+            n_dispatchyears, " dispatch years")
+    println(io, "(only showing first investment year here)")
+
+    peak_load = maximum(sys.demand[:,:,1]) * powerunits_MW
+    println(io, "Peak Load: ", peak_load, " MW")
 
     has_thermal = length(sys.thermaltechs_existing) > 0
     has_variable = length(sys.variabletechs_existing) > 0
@@ -106,7 +111,7 @@ function Base.show(io::IO, ::MIME"text/plain", sys::SystemParams)
         println(io, "\t", thermaltech.name, ":")
         for site in thermaltech.sites
             println(io, "\t\t", site.name, ": ",
-                    site.units, " x ", thermaltech.unit_size * powerunits_MW, " MW")
+                    site.units[1], " x ", thermaltech.unit_size * powerunits_MW, " MW")
         end
     end
 

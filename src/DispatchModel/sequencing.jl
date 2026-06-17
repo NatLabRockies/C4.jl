@@ -10,7 +10,7 @@ struct StorageDispatchRecurrence
     function StorageDispatchRecurrence(
         m::JuMP.Model,
         prev_recurrence::Union{StorageDispatchRecurrence,Nothing},
-        storage::StorageTechnology, dispatch::StorageDispatch,
+        storage::DispatchableStorageTech, dispatch::StorageDispatch,
         repetitions::Int)
 
         energy = maxenergy(storage)
@@ -31,7 +31,7 @@ struct StorageDispatchRecurrence
 
 end
 
-struct DispatchRecurrence{S <: System}
+struct DispatchRecurrence{S <: DispatchableSystem}
 
     dispatch::SystemDispatch{S} # Note this is just a reference, data is owned elsewhere
     repetitions::Int
@@ -41,7 +41,7 @@ struct DispatchRecurrence{S <: System}
     function DispatchRecurrence(
         m::JuMP.Model, prev_recurrence::Union{DispatchRecurrence{S},Nothing},
         system::S, dispatch::SystemDispatch{S}, repetitions::Int
-    ) where S <: System
+    ) where S <: DispatchableSystem
 
         prev_recurrence_stors = isnothing(prev_recurrence) ?
             StorageDispatchRecurrence[] : prev_recurrence.storagetechs
@@ -65,19 +65,19 @@ cost(recurrence::DispatchRecurrence) =
 co2(recurrence::DispatchRecurrence) =
     co2(recurrence.dispatch) * recurrence.repetitions
 
-struct DispatchSequence{S <: System}
+struct DispatchSequence{S <: DispatchableSystem}
 
-    time::TimeProxyAssignment
+    time::DispatchProxyMapping
 
     dispatches::Vector{SystemDispatch{S}}
     recurrences::Vector{DispatchRecurrence{S}}
 
     function DispatchSequence(
-        m::JuMP.Model, system::S, time::TimeProxyAssignment, voll::Float64=NaN;
+        m::JuMP.Model, system::S, time::DispatchProxyMapping, voll::Float64=NaN;
         unit_commitment::Bool=true
-    ) where {S <: System}
+    ) where {S <: DispatchableSystem}
 
-        dispatches = [SystemDispatch(m, system, period, voll, unit_commitment=unit_commitment) for period in time.periods]
+        dispatches = [SystemDispatch(m, system, day, voll, unit_commitment=unit_commitment) for day in time.days]
         recurrences = sequence_recurrences(m, system, dispatches, time)
         new{S}(time, dispatches, recurrences)
 
@@ -92,10 +92,10 @@ co2(sequence::DispatchSequence) =
     sum(co2(recurrence) for recurrence in sequence.recurrences; init=0)
 
 function sequence_recurrences(
-    m::JuMP.Model, system::S, dispatches::Vector{SystemDispatch{S}}, time::TimeProxyAssignment
-) where S <: System
+    m::JuMP.Model, system::S, dispatches::Vector{SystemDispatch{S}}, time::DispatchProxyMapping
+) where S <: DispatchableSystem
 
-    sequence = deduplicate(time.days)
+    sequence = deduplicate(time.mapping)
     recurrences = Vector{DispatchRecurrence{S}}(undef, length(sequence))
 
     prev_recurrence = nothing

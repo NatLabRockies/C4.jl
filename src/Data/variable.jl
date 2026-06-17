@@ -1,36 +1,41 @@
-struct VariableExistingSiteParams <: VariableSite
+struct VariableExistingSiteParams <: DispatchableVariableSite
 
     name::String
 
-    capacity::Float64 # MW
-    availability::Vector{Float64}
+    capacity::InvestmentDataArray{Float64} # MW
+    availability::DispatchDataArray{Float64}
 
 end
 
-nameplatecapacity(site::VariableExistingSiteParams) = site.capacity
-availability(site::VariableExistingSiteParams, t::Int) = site.availability[t]
+nameplatecapacity(site::VariableExistingSiteParams, invyear::Int=1) =
+    site.capacity[invyear]
 
-struct VariableExistingParams <: VariableTechnology
+availability(site::VariableExistingSiteParams, invyear::Int, day::Int, hour::Int) =
+    site.availability[hour, day, invyear]
+
+struct VariableExistingParams <: DispatchableVariableTech
 
     name::String
     category::String
 
-    cost_generation::Float64 # $/MWh
+    cost_vom::InvestmentDataArray{Float64} # $/MWh
 
     sites::Vector{VariableExistingSiteParams}
 
 end
 
+tech(::Type{VariableExistingSiteParams}) = VariableExistingParams
+
 sites(tech::VariableExistingParams) = tech.sites
-cost_generation(tech::VariableExistingParams) = tech.cost_generation
+cost_generation(tech::VariableExistingParams, invyear::Int=1) = tech.cost_vom[invyear]
 name(tech::VariableExistingParams) = tech.name
 
 struct VariableCandidateSiteParams
 
     name::String
 
-    capacity_max::Float64 # MW
-    availability::Vector{Float64}
+    capacity_max::InvestmentDataArray{Float64} # MW
+    availability::DispatchDataArray{Float64}
 
 end
 
@@ -41,9 +46,11 @@ struct VariableCandidateParams
     name::String
     category::String
 
-    cost_capital::Float64 # annualized $/MW
-    cost_generation::Float64 # $/MWh
+    cost_capital::InvestmentDataArray{Float64} # annualized $/MW
+    cost_vom::InvestmentDataArray{Float64} # $/MWh
 
     sites::Vector{VariableCandidateSiteParams}
 
 end
+
+tech(::Type{VariableCandidateSiteParams}) = VariableCandidateParams
