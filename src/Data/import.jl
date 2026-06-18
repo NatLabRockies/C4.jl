@@ -399,7 +399,7 @@ function load_existing_storagesites!(system::SystemParams, datadir::String)
 
         site = StorageExistingSiteParams(sitename, power)
 
-        tech = get_tech(system, StorageExistingParams, regionname, techname)
+        tech = get_tech(system, StorageExistingParams, techname)
         push!(tech.sites, site)
 
     end

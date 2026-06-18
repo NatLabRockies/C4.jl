@@ -17,7 +17,8 @@ struct ThermalDispatch{G<:ThermalTechnology}
     tech::G
 
     function ThermalDispatch(
-        m::JuMP.Model, tech::G, period::TimePeriod
+        m::JuMP.Model, tech::G, period::TimePeriod;
+        unit_commitment::Bool=true
     ) where G <: ThermalTechnology
 
         T = length(period)
@@ -27,40 +28,68 @@ struct ThermalDispatch{G<:ThermalTechnology}
         fullname = join([name(tech), period.name], ",")
         varnames!(dispatch, "tech_dispatch[$(fullname)]", 1:T)
 
-        units_committed = @variable(m, [1:T], integer=true, lower_bound = 0)
-        varnames!(units_committed, "tech_units_committed[$(fullname)]", 1:T)
+        if unit_commitment
 
-        units_startup = @variable(m, [1:T], binary=true, lower_bound = 0)
-        varnames!(units_startup, "tech_units_startup[$(fullname)]", 1:T)
+            units_committed = @variable(m, [1:T], integer=true, lower_bound = 0)
+            varnames!(units_committed, "tech_units_committed[$(fullname)]", 1:T)
 
-        units_shutdown = @variable(m, [1:T], binary=true, lower_bound = 0)
-        varnames!(units_shutdown, "tech_units_shutdown[$(fullname)]", 1:T)
+            units_startup = @variable(m, [1:T], binary=true, lower_bound = 0)
+            varnames!(units_startup, "tech_units_startup[$(fullname)]", 1:T)
 
-        units_committed_max = @constraint(m, [t in 1:T],
-            units_committed[t] <= num_units(tech))
+            units_shutdown = @variable(m, [1:T], binary=true, lower_bound = 0)
+            varnames!(units_shutdown, "tech_units_shutdown[$(fullname)]", 1:T)
 
-        commitment_state = @constraint(m, [t in 1:T],
-            units_committed[t] == units_committed[prev_t(t, T)] + units_startup[t] - units_shutdown[t])
+            units_committed_max = @constraint(m, [t in 1:T],
+                units_committed[t] <= num_units(tech))
 
-        min_up_time = @constraint(m, [t in 1:T],
-            sum(units_startup[tt] for tt in last_n(t, min_uptime(tech), T)) <= units_committed[t])
+            commitment_state = @constraint(m, [t in 1:T],
+                units_committed[t] == units_committed[prev_t(t, T)] + units_startup[t] - units_shutdown[t])
 
-        min_down_time = @constraint(m, [t in 1:T],
-            sum(units_shutdown[tt] for tt in last_n(t, min_downtime(tech), T)) <= num_units(tech) - units_committed[t])
+            min_up_time = @constraint(m, [t in 1:T],
+                sum(units_startup[tt] for tt in last_n(t, min_uptime(tech), T)) <= units_committed[t])
 
-        dispatch_max = @constraint(m, [t in 1:T],
-            dispatch[t] <= unit_size(tech) * units_committed[t])
+            min_down_time = @constraint(m, [t in 1:T],
+                sum(units_shutdown[tt] for tt in last_n(t, min_downtime(tech), T)) <= num_units(tech) - units_committed[t])
 
-        dispatch_min = @constraint(m, [t in 1:T],
-            min_gen(tech) * units_committed[t] <= dispatch[t])
+            dispatch_max = @constraint(m, [t in 1:T],
+                dispatch[t] <= unit_size(tech) * units_committed[t])
 
-        ramp_up_max = @constraint(m, [t in 1:T],
-            dispatch[t] - dispatch[prev_t(t, T)] <= max_unit_ramp(tech) * (units_committed[t] - units_startup[t]) - min_gen(tech) * units_shutdown[t] + max(min_gen(tech), max_unit_ramp(tech)) * units_startup[t]
-            )
+            dispatch_min = @constraint(m, [t in 1:T],
+                min_gen(tech) * units_committed[t] <= dispatch[t])
 
-        ramp_down_max = @constraint(m, [t in 1:T],
-            dispatch[prev_t(t, T)] - dispatch[t] <= max_unit_ramp(tech) * (units_committed[t] - units_startup[t]) - min_gen(tech) * units_startup[t] + max(min_gen(tech), max_unit_ramp(tech)) * units_shutdown[t]
-            )
+            ramp_up_max = @constraint(m, [t in 1:T],
+                dispatch[t] - dispatch[prev_t(t, T)] <= max_unit_ramp(tech) * (units_committed[t] - units_startup[t]) - min_gen(tech) * units_shutdown[t] + max(min_gen(tech), max_unit_ramp(tech)) * units_startup[t]
+                )
+
+            ramp_down_max = @constraint(m, [t in 1:T],
+                dispatch[prev_t(t, T)] - dispatch[t] <= max_unit_ramp(tech) * (units_committed[t] - units_startup[t]) - min_gen(tech) * units_startup[t] + max(min_gen(tech), max_unit_ramp(tech)) * units_shutdown[t]
+                )
+
+        else
+
+            # No UC: dispatch-only, bounded by nameplatecapacity.
+            # No commitment vars, no startup/shutdown, no ramp limits.
+            units_committed     = JuMP.VariableRef[]
+            units_startup       = JuMP.VariableRef[]
+            units_shutdown      = JuMP.VariableRef[]
+
+            units_committed_max = JuMP_LessThanConstraintRef[]
+            commitment_state    = JuMP_EqualToConstraintRef[]
+            min_up_time         = JuMP_LessThanConstraintRef[]
+            min_down_time       = JuMP_LessThanConstraintRef[]
+
+            dispatch_max = @constraint(m, [t in 1:T],
+                dispatch[t] <= nameplatecapacity(tech))
+
+            dispatch_min  = JuMP_LessThanConstraintRef[]
+
+            ramp_up_max = @constraint(m, [t in 1:T],
+                dispatch[t] - dispatch[prev_t(t, T)] <= max_unit_ramp(tech) * num_units(tech))
+
+            ramp_down_max = @constraint(m, [t in 1:T],
+                dispatch[prev_t(t, T)] - dispatch[t] <= max_unit_ramp(tech) * num_units(tech))
+
+        end
 
         return new{G}(dispatch, units_committed, units_startup, units_shutdown, units_committed_max, commitment_state, dispatch_max, min_up_time, min_down_time, dispatch_min, ramp_up_max, ramp_down_max, tech)
 
@@ -69,11 +98,11 @@ struct ThermalDispatch{G<:ThermalTechnology}
 end
 
 cost(dispatch::ThermalDispatch) =
-    cost_startup(dispatch.tech) * sum(dispatch.units_startup) +
+    (isempty(dispatch.units_startup) ? 0 : cost_startup(dispatch.tech) * sum(dispatch.units_startup)) +
     cost_generation(dispatch.tech) * sum(dispatch.dispatch)
 
 co2(dispatch::ThermalDispatch) =
-    co2_startup(dispatch.tech) * sum(dispatch.units_startup) +
+    (isempty(dispatch.units_startup) ? 0 : co2_startup(dispatch.tech) * sum(dispatch.units_startup)) +
     co2_generation(dispatch.tech) * sum(dispatch.dispatch)
 
 name(dispatch::ThermalDispatch) = name(dispatch.tech)
@@ -208,13 +237,14 @@ struct SystemDispatch{S<:System}
     system::S
 
     function SystemDispatch(
-        m::JuMP.Model, system::S, period::TimePeriod, voll::Float64
+        m::JuMP.Model, system::S, period::TimePeriod, voll::Float64;
+        unit_commitment::Bool=true
     ) where { S <: System }
 
         n_timesteps = length(period)
         ts = period.timesteps
 
-        thermaldispatch = [ThermalDispatch(m, tech, period)
+        thermaldispatch = [ThermalDispatch(m, tech, period, unit_commitment=unit_commitment)
                            for tech in thermaltechs(system)]
 
         variabledispatch = [VariableDispatch(m, tech, period)

@@ -73,10 +73,11 @@ struct DispatchSequence{S <: System}
     recurrences::Vector{DispatchRecurrence{S}}
 
     function DispatchSequence(
-        m::JuMP.Model, system::S, time::TimeProxyAssignment, voll::Float64=NaN
+        m::JuMP.Model, system::S, time::TimeProxyAssignment, voll::Float64=NaN;
+        unit_commitment::Bool=true
     ) where {S <: System}
 
-        dispatches = [SystemDispatch(m, system, period, voll) for period in time.periods]
+        dispatches = [SystemDispatch(m, system, period, voll, unit_commitment=unit_commitment) for period in time.periods]
         recurrences = sequence_recurrences(m, system, dispatches, time)
         new{S}(time, dispatches, recurrences)
 

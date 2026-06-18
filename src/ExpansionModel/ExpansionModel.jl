@@ -60,7 +60,8 @@ mutable struct ExpansionProblem
         eue_max::Float64, # in powerunits_MWh
         co2_max::Float64, # in annual Megatonnes CO2
         carbon_offset_price::Float64, # $/tonne CO2
-        optimizer
+        optimizer;
+        unit_commitment::Bool=true
     )
 
         n_timesteps = length(system.timesteps)
@@ -72,7 +73,7 @@ mutable struct ExpansionProblem
 
         builds = SystemExpansion(m, system)
 
-        economicdispatch = DispatchSequence(m, builds, chronology)
+        economicdispatch = DispatchSequence(m, builds, chronology, unit_commitment=unit_commitment)
 
         reliabilityconstraints = ReliabilityConstraints(
             m, builds, riskparams, eue_max)

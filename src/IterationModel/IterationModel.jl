@@ -24,7 +24,8 @@ function iterate_ra_cem(
     co2_offset_price::Float64=9999., # $/tonne CO2
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
-    check_dispatch::Bool=false, check_dispatch_voll::Real=NaN)
+    check_dispatch::Bool=false, check_dispatch_voll::Real=NaN,
+    unit_commitment::Bool=true)
 
     persist = length(outfile) > 0
     timeout += time()
@@ -85,7 +86,8 @@ function iterate_ra_cem(
         cem_start = now()
 
         cem = ExpansionProblem(sys, chronology, eue_estimator, max_eue,
-                               max_co2, co2_offset_price, optimizer)
+                               max_co2, co2_offset_price, optimizer,
+                               unit_commitment=unit_commitment)
 
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
