@@ -36,73 +36,102 @@ end
 
 function store(con::DBInterface.Connection, iter::Int, sys::SystemExpansion)
 
+    # TODO: Store these investment year expansion params?
+    #   neue_limit DOUBLE,
+    #   voll DOUBLE,
+    #   carbon_intensity_limit DOUBLE,
+    #   carbon_offset_price DOUBLE
+
     DBInterface.execute(con, "CREATE TABLE IF NOT EXISTS sitebuilds (
         iteration INTEGER REFERENCES iterations(id),
+        year INTEGER REFERENCES investment_years (year),
         site TEXT,
         tech TEXT,
         power DOUBLE,
         energy DOUBLE,
         FOREIGN KEY (site, tech) REFERENCES sites (site, tech),
-        PRIMARY KEY (iteration, site, tech)
+        PRIMARY KEY (iteration, year, site, tech)
     )")
 
     appender = ExpansionAppender(con)
+    times = sys.params.times
 
-    foreach(tech -> store(appender, iter, tech), sys.thermaltechs)
-    foreach(tech -> store(appender, iter, tech), sys.variabletechs)
-    foreach(tech -> store(appender, iter, tech), sys.storagetechs)
+    foreach(tech -> store(appender, iter, tech, times), sys.thermaltechs)
+    foreach(tech -> store(appender, iter, tech, times), sys.variabletechs)
+    foreach(tech -> store(appender, iter, tech, times), sys.storagetechs)
 
     DuckDB.close(appender)
 
     DBInterface.execute(con, "CREATE VIEW IF NOT EXISTS summary_tech_capex AS
-        SELECT iteration, site, tech,
+        SELECT iteration, year, site, tech,
             power * cost_capital_power as cost_power,
             energy * cost_capital_energy as cost_energy
-        FROM sitebuilds JOIN techs USING (tech)
+        FROM sitebuilds
+        JOIN techs USING (tech)
+        JOIN tech_costs USING (year, tech)
     ")
 
 end
 
-function store(appender::ExpansionAppender, iter::Int, tech::ThermalExpansion)
+function store(
+    appender::ExpansionAppender, iter::Int, tech::ThermalExpansion, times::TimeIndices)
 
-    new_capacity = value(tech.units_new) * tech.params.unit_size * powerunits_MW
+    for (y, year) in enumerate(times.investment_years)
 
-    DuckDB.append(appender.sitebuilds, iter)
-    DuckDB.append(appender.sitebuilds, "")
-    DuckDB.append(appender.sitebuilds, name(tech))
-    DuckDB.append(appender.sitebuilds, new_capacity)
-    DuckDB.append(appender.sitebuilds, nothing)
-    DuckDB.end_row(appender.sitebuilds)
+        new_capacity = value(tech.units_new[y]) * tech.params.unit_size * powerunits_MW
+
+        DuckDB.append(appender.sitebuilds, iter)
+        DuckDB.append(appender.sitebuilds, year)
+        DuckDB.append(appender.sitebuilds, "")
+        DuckDB.append(appender.sitebuilds, name(tech))
+        DuckDB.append(appender.sitebuilds, new_capacity)
+        DuckDB.append(appender.sitebuilds, nothing)
+        DuckDB.end_row(appender.sitebuilds)
+
+    end
 
 end
 
-store(appender::ExpansionAppender, iter::Int, tech::VariableExpansion) =
-    foreach(site -> store(appender, iter, site, tech), tech.sites)
+store(
+    appender::ExpansionAppender, iter::Int,
+    tech::VariableExpansion, times::TimeIndices
+) = foreach(site -> store(appender, iter, site, tech, times), tech.sites)
 
 function store(appender::ExpansionAppender, iter::Int,
-               site::VariableSiteExpansion, tech::VariableExpansion)
+               site::VariableSiteExpansion, tech::VariableExpansion, times::TimeIndices)
 
-    new_capacity = value(site.capacity_new) * powerunits_MW
+    for (y, year) in enumerate(times.investment_years)
 
-    DuckDB.append(appender.sitebuilds, iter)
-    DuckDB.append(appender.sitebuilds, site.params.name)
-    DuckDB.append(appender.sitebuilds, name(tech))
-    DuckDB.append(appender.sitebuilds, new_capacity)
-    DuckDB.append(appender.sitebuilds, nothing)
-    DuckDB.end_row(appender.sitebuilds)
+        new_capacity = value(site.capacity_new[y]) * powerunits_MW
+
+        DuckDB.append(appender.sitebuilds, iter)
+        DuckDB.append(appender.sitebuilds, year)
+        DuckDB.append(appender.sitebuilds, site.params.name)
+        DuckDB.append(appender.sitebuilds, name(tech))
+        DuckDB.append(appender.sitebuilds, new_capacity)
+        DuckDB.append(appender.sitebuilds, nothing)
+        DuckDB.end_row(appender.sitebuilds)
+
+    end
 
 end
 
-function store(appender::ExpansionAppender, iter::Int, tech::StorageExpansion)
+function store(appender::ExpansionAppender, iter::Int,
+               tech::StorageExpansion, times::TimeIndices)
 
-    new_power = value(tech.power_new) * powerunits_MW
-    new_energy = value(tech.energy_new) * powerunits_MW
+    for (y, year) in enumerate(times.investment_years)
 
-    DuckDB.append(appender.sitebuilds, iter)
-    DuckDB.append(appender.sitebuilds, "")
-    DuckDB.append(appender.sitebuilds, name(tech))
-    DuckDB.append(appender.sitebuilds, new_power)
-    DuckDB.append(appender.sitebuilds, new_energy)
-    DuckDB.end_row(appender.sitebuilds)
+        new_power = value(tech.power_new[y]) * powerunits_MW
+        new_energy = value(tech.energy_new[y]) * powerunits_MW
+
+        DuckDB.append(appender.sitebuilds, iter)
+        DuckDB.append(appender.sitebuilds, year)
+        DuckDB.append(appender.sitebuilds, "")
+        DuckDB.append(appender.sitebuilds, name(tech))
+        DuckDB.append(appender.sitebuilds, new_power)
+        DuckDB.append(appender.sitebuilds, new_energy)
+        DuckDB.end_row(appender.sitebuilds)
+
+    end
 
 end

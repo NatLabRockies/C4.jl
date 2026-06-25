@@ -1,14 +1,17 @@
 struct ThermalExpansion <: DispatchableThermalTech
 
     params::ThermalCandidateParams
-    units_new::JuMP.VariableRef
+    units_new::Vector{JuMP.VariableRef}
 
     function ThermalExpansion(
-        m::JuMP.Model, techparams::ThermalCandidateParams)
+        m::JuMP.Model, techparams::ThermalCandidateParams, times::TimeIndices)
 
-        units_new = @variable(m, integer=true, lower_bound=0,
-                              upper_bound=techparams.max_units[1])
-        JuMP.set_name(units_new, "thermal_new_units[$(techparams.name)]")
+        n_invyears = length(times.investment_years)
+
+        units_new = @variable(m, [1:n_invyears], integer=true, lower_bound=0)
+        set_upper_bound.(units_new, techparams.max_units)
+        varnames!(units_new, "thermal_new_units[$(techparams.name)]",
+                  times.investment_years)
 
         new(techparams, units_new)
 
@@ -16,28 +19,28 @@ struct ThermalExpansion <: DispatchableThermalTech
 
 end
 
-nameplatecapacity(tech::ThermalExpansion) =
-        tech.units_new * tech.params.unit_size
+nameplatecapacity(tech::ThermalExpansion, i::Int=1) =
+        sum(tech.units_new[1:i]) * tech.params.unit_size
 
 ratedcapacity(tech::ThermalExpansion, invyear::Int, day::Int, hour::Int) =
-    nameplatecapacity(tech, invyear) * tech.params.rating[invyear, day, hour]
+    nameplatecapacity(tech, invyear) * tech.params.rating[hour, day, invyear]
 
-expectedcapacity(tech::ThermalExistingParams, invyear::Int, day::Int, hour::Int) =
-    rated(tech, invyear) * availability(tech.params, invyear, day, hour)
+expectedcapacity(tech::ThermalExpansion, invyear::Int, day::Int, hour::Int) =
+    ratedcapacity(tech, invyear) * availability(tech.params, invyear, day, hour)
 
 cost(build::ThermalExpansion, invyear::Int=1) =
-    build.units_new * build.params.unit_size * build.params.cost_capital[invyear]
+    build.units_new[invyear] * build.params.unit_size * build.params.cost_capital[invyear]
 
 cost_startup(build::ThermalExpansion, invyear::Int=1) =
-    cost_startup(build.params)
+    cost_startup(build.params, invyear)
 
 cost_generation(tech::ThermalExpansion, invyear::Int=1) =
-    cost_generation(tech.params)
+    cost_generation(tech.params, invyear)
 
 co2_startup(build::ThermalExpansion) = co2_startup(build.params)
 co2_generation(tech::ThermalExpansion) = co2_generation(tech.params)
 
-num_units(tech::ThermalExpansion) = tech.units_new
+num_units(tech::ThermalExpansion, i::Int=1) = tech.units_new[i]
 
 unit_size(tech::ThermalExpansion) = tech.params.unit_size
 
@@ -48,12 +51,11 @@ min_downtime(tech::ThermalExpansion) = tech.params.min_downtime
 
 function ThermalExistingParams(tech::ThermalExpansion)
 
-    new_units = round(Int, value(tech.units_new))
     params = tech.params
 
     new_site = ThermalExistingSiteParams(
         "",
-        [new_units],
+        round.(Int, value.(tech.units_new)),
         params.λ,
         params.μ)
 
@@ -76,7 +78,6 @@ end
 
 function ThermalCandidateParams(tech::ThermalExpansion)
 
-    new_units = round(Int, value(tech.units_new))
     params = tech.params
 
     return ThermalCandidateParams(
@@ -87,7 +88,7 @@ function ThermalCandidateParams(tech::ThermalExpansion)
         params.startup_heat,
         params.cost_vom,
         params.cost_capital,
-        [params.max_units[1] - new_units],
+        params.max_units .- round.(Int, value.(tech.units_new)),
         params.unit_size,
         params.rating,
         params.min_gen,
@@ -100,6 +101,6 @@ function ThermalCandidateParams(tech::ThermalExpansion)
 end
 
 function warmstart_builds!(build::ThermalExpansion, prev_build::ThermalExpansion)
-    JuMP.set_start_value(build.units_new, value(prev_build.units_new))
+    JuMP.set_start_value.(build.units_new, value.(prev_build.units_new))
     return
 end

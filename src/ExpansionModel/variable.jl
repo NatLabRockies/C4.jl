@@ -1,15 +1,21 @@
 struct VariableSiteExpansion <: DispatchableVariableSite
 
     params::VariableCandidateSiteParams
-    capacity_new::JuMP.VariableRef
+    capacity_new::Vector{JuMP.VariableRef}
 
     function VariableSiteExpansion(
         m::JuMP.Model, siteparams::VariableCandidateSiteParams,
-        techparams::VariableCandidateParams)
+        techparams::VariableCandidateParams, times::TimeIndices)
+
+        n_invyears = length(times.investment_years)
+
+        capacity_new = @variable(m, [1:n_invyears], lower_bound=0)
+        set_upper_bound.(capacity_new, siteparams.capacity_max)
 
         fullname = join([techparams.name, siteparams.name], ",")
-        capacity_new = @variable(m, lower_bound=0, upper_bound=siteparams.capacity_max[1])
-        JuMP.set_name(capacity_new, "variable_new_capacity[$fullname]")
+        varnames!(capacity_new, "variable_new_capacity[$fullname]",
+                  times.investment_years)
+
         new(siteparams, capacity_new)
 
     end
@@ -17,8 +23,7 @@ struct VariableSiteExpansion <: DispatchableVariableSite
 end
 
 function nameplatecapacity(site::VariableSiteExpansion, i::Int=1)
-    i != 1 && error("Only data for the first investment year is available")
-    return site.capacity_new
+    return sum(site.capacity_new[1:i])
 end
 
 availability(site::VariableSiteExpansion, i::Int, d::Int, h::Int) =
@@ -27,17 +32,17 @@ availability(site::VariableSiteExpansion, i::Int, d::Int, h::Int) =
 VariableExistingSiteParams(build::VariableSiteExpansion) =
     VariableExistingSiteParams(
         build.params.name,
-        [value(build.capacity_new)],
+        value.(build.capacity_new),
         build.params.availability)
 
 VariableCandidateSiteParams(build::VariableSiteExpansion) =
     VariableCandidateSiteParams(
         build.params.name,
-        [build.params.capacity_max[1] - value(build.capacity_new)],
+        build.params.capacity_max .- value.(build.capacity_new),
         build.params.availability)
 
 function warmstart_builds!(build::VariableSiteExpansion, prev_build::VariableSiteExpansion)
-    JuMP.set_start_value(build.capacity_new, value(prev_build.capacity_new))
+    JuMP.set_start_value.(build.capacity_new, value.(prev_build.capacity_new))
     return
 end
 
@@ -48,9 +53,9 @@ struct VariableExpansion <: DispatchableVariableTech
     sites::Vector{VariableSiteExpansion}
 
     function VariableExpansion(
-        m::JuMP.Model, techparams::VariableCandidateParams)
+        m::JuMP.Model, techparams::VariableCandidateParams, times::TimeIndices)
 
-        sites = [VariableSiteExpansion(m, siteparams, techparams)
+        sites = [VariableSiteExpansion(m, siteparams, techparams, times)
                  for siteparams in techparams.sites]
 
         new(techparams, sites)

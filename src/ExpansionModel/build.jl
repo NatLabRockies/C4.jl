@@ -20,13 +20,13 @@ struct SystemExpansion <: DispatchableSystem
 
     function SystemExpansion(m::JuMP.Model, systemparams::SystemParams)
 
-        thermaltechs = [ThermalExpansion(m, techparams)
+        thermaltechs = [ThermalExpansion(m, techparams, systemparams.times)
                         for techparams in systemparams.thermaltechs_candidate]
 
-        variabletechs = [VariableExpansion(m, techparams)
+        variabletechs = [VariableExpansion(m, techparams, systemparams.times)
                         for techparams in systemparams.variabletechs_candidate]
 
-        storagetechs = [StorageExpansion(m, techparams)
+        storagetechs = [StorageExpansion(m, techparams, systemparams.times)
                         for techparams in systemparams.storagetechs_candidate]
 
         new(systemparams, thermaltechs, variabletechs, storagetechs)

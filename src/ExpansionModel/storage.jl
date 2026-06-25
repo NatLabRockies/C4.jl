@@ -2,17 +2,23 @@ struct StorageExpansion <: DispatchableStorageTech
 
     params::StorageCandidateParams
 
-    power_new::JuMP.VariableRef
-    energy_new::JuMP.VariableRef
+    power_new::Vector{JuMP.VariableRef}
+    energy_new::Vector{JuMP.VariableRef}
 
     function StorageExpansion(
-        m::JuMP.Model, techparams::StorageCandidateParams)
+        m::JuMP.Model, techparams::StorageCandidateParams, times::TimeIndices)
 
-        power_new = @variable(m, lower_bound=0, upper_bound=techparams.power_max[1])
-        JuMP.set_name(power_new, "storage_new_power[$(techparams.name)]")
+        n_invyears = length(times.investment_years)
 
-        energy_new = @variable(m, lower_bound=0, upper_bound=techparams.energy_max[1])
-        JuMP.set_name(energy_new, "storage_new_energy[$(techparams.name)]")
+        power_new = @variable(m, [1:n_invyears], lower_bound=0)
+        set_upper_bound.(power_new, techparams.power_max)
+        varnames!(power_new, "storage_new_power[$(techparams.name)]",
+                  times.investment_years)
+
+        energy_new = @variable(m, [1:n_invyears], lower_bound=0)
+        set_upper_bound.(energy_new, techparams.energy_max)
+        varnames!(energy_new, "storage_new_energy[$(techparams.name)]",
+                  times.investment_years)
 
         new(techparams, power_new, energy_new)
 
@@ -20,41 +26,43 @@ struct StorageExpansion <: DispatchableStorageTech
 
 end
 
-maxpower(tech::StorageExpansion) = tech.power_new
+maxpower(tech::StorageExpansion, i::Int=1) = sum(tech.power_new[1:i])
 
-maxenergy(tech::StorageExpansion) = tech.energy_new
+maxenergy(tech::StorageExpansion, i::Int=1) = sum(tech.energy_new[1:i])
 
-cost(tech::StorageExpansion) =
-    tech.power_new * tech.params.cost_capital_power[1] +
-    tech.energy_new * tech.params.cost_capital_energy[1]
+cost(tech::StorageExpansion, i::Int=1) =
+    tech.power_new[i] * tech.params.cost_capital_power[i] +
+    tech.energy_new[i] * tech.params.cost_capital_energy[i]
 
-operating_cost(tech::StorageExpansion) =
-    tech.params.cost_vom[1]
+operating_cost(tech::StorageExpansion, i::Int=1) =
+    tech.params.cost_vom[i]
 
 roundtrip_efficiency(tech::StorageExpansion) =
     tech.params.roundtrip_efficiency
 
 function warmstart_builds!(build::StorageExpansion, prev_build::StorageExpansion)
-    JuMP.set_start_value(build.power_new, value(prev_build.power_new))
-    JuMP.set_start_value(build.energy_new, value(prev_build.energy_new))
+    JuMP.set_start_value.(build.power_new, value.(prev_build.power_new))
+    JuMP.set_start_value.(build.energy_new, value.(prev_build.energy_new))
     return
 end
 
 function StorageExistingParams(tech::StorageExpansion)
 
-    new_power = value(tech.power_new)
-    new_energy = value(tech.energy_new)
-    new_duration = iszero(new_power) ? 0. : new_energy / new_power
+    new_power = value.(tech.power_new)
+    new_energy = value.(tech.energy_new)
+    new_duration = [iszero(new_power[i]) ? 0. : sum(new_energy[1:i]) / sum(new_power[1:i])
+                    for i in eachindex(new_power)]
 
     params = tech.params
 
     return StorageExistingParams(
         params.name,
         params.category,
-        new_duration,
+        new_duration[1], # TODO: need a single duration for the tech,
+                         #       but can size each year independently here...
         params.roundtrip_efficiency,
         params.cost_vom,
-        [StorageExistingSiteParams(tech.params.name * " built", [new_power])]
+        [StorageExistingSiteParams(tech.params.name * " built", new_power)]
     )
 
 end
@@ -70,7 +78,7 @@ function StorageCandidateParams(tech::StorageExpansion)
         params.cost_vom,
         params.cost_capital_power,
         params.cost_capital_energy,
-        [params.power_max[1] .- value(tech.power_new)],
-        [params.energy_max[1] .- value(tech.energy_new)])
+        params.power_max .- value.(tech.power_new),
+        params.energy_max .- value.(tech.energy_new))
 
 end

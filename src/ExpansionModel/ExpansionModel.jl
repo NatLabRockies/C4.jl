@@ -1,7 +1,8 @@
 module ExpansionModel
 
 import JuMP
-import JuMP: @variable, @constraint, @expression, @objective, value
+import JuMP: @variable, @constraint, @expression, @objective,
+             value, set_upper_bound
 
 import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
         ..JuMP_ExpressionRef,

@@ -39,17 +39,20 @@ end
 function store(con::DBInterface.Connection, iter::Int, result::AdequacyResult)
 
     DBInterface.execute(con, "CREATE TABLE IF NOT EXISTS adequacies (
-        iteration INTEGER PRIMARY KEY REFERENCES iterations(id),
+        iteration INTEGER REFERENCES iterations (id),
+        year INTEGER REFERENCES investment_years (year),
         demand DOUBLE,
         eue DOUBLE,
         eue_std DOUBLE,
         lole DOUBLE,
-        lole_std DOUBLE
+        lole_std DOUBLE,
+        PRIMARY KEY (iteration, year)
     )")
 
     DBInterface.execute(con, "CREATE TABLE IF NOT EXISTS timestep_adequacies (
-        iteration INTEGER REFERENCES iterations(id),
-        year INTEGER,
+        iteration INTEGER REFERENCES iterations (id),
+        year INTEGER REFERENCES investment_years (year),
+        dispyear INTEGER,
         dayofyear INTEGER,
         hourofday INTEGER,
         demand DOUBLE,
@@ -57,16 +60,18 @@ function store(con::DBInterface.Connection, iter::Int, result::AdequacyResult)
         eue_std DOUBLE,
         lole DOUBLE,
         lole_std DOUBLE,
-        PRIMARY KEY (iteration, year, dayofyear, hourofday)
+        PRIMARY KEY (iteration, year, dispyear, dayofyear, hourofday)
     )")
 
     appender = AdequacyAppender(con)
+    invyear = first(result.times.investment_years)
 
     demand = sum(result.demand)
     eue = sum(result.eues)
     lole = sum(result.lolps)
 
     DuckDB.append(appender.adequacies, iter)
+    DuckDB.append(appender.adequacies, invyear)
     DuckDB.append(appender.adequacies, demand)
     DuckDB.append(appender.adequacies, eue)
     DuckDB.append(appender.adequacies, nothing)
@@ -78,6 +83,7 @@ function store(con::DBInterface.Connection, iter::Int, result::AdequacyResult)
         for hourofday in 1:N_HOURS_IN_DAY
 
             DuckDB.append(appender.timestep_adequacies, iter)
+            DuckDB.append(appender.timestep_adequacies, invyear)
             DuckDB.append(appender.timestep_adequacies, year)
             DuckDB.append(appender.timestep_adequacies, dayofyear)
             DuckDB.append(appender.timestep_adequacies, hourofday)

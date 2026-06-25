@@ -124,7 +124,7 @@ function iterate_ra_cem(
             store_iteration_step(con, n_iters, "adequacy", ram_start => ram_end)
             store_iteration_step(con, n_iters, "augmentation", aug_start => aug_end)
             store(con, n_iters, cem.builds)
-            store(con, n_iters, cem.dispatch)
+            store(con, n_iters, cem.dispatch, sys_built.times)
             store(con, n_iters, ram_result)
             DBInterface.execute(con, "CHECKPOINT")
             store_end = now()
