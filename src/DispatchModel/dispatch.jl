@@ -17,14 +17,14 @@ struct ThermalDispatch{G<:DispatchableThermalTech}
     tech::G
 
     function ThermalDispatch(
-        m::JuMP.Model, tech::G, period::DispatchDay;
+        m::JuMP.Model, tech::G, invyear::Int, period::DispatchDay;
         unit_commitment::Bool=true
     ) where G <: DispatchableThermalTech
 
         T = N_HOURS_IN_DAY
 
         dispatch = @variable(m, [1:T], lower_bound = 0)
-        fullname = join([name(tech), period.name], ",")
+        fullname = join([invyear, name(tech), period.name], ",")
         varnames!(dispatch, "tech_dispatch[$(fullname)]", 1:T)
 
         if unit_commitment
@@ -39,7 +39,7 @@ struct ThermalDispatch{G<:DispatchableThermalTech}
             varnames!(units_shutdown, "tech_units_shutdown[$(fullname)]", 1:T)
 
             units_committed_max = @constraint(m, [t in 1:T],
-                units_committed[t] <= num_units(tech))
+                units_committed[t] <= num_units(tech, invyear))
 
             commitment_state = @constraint(m, [t in 1:T],
                 units_committed[t] == units_committed[prev_t(t, T)] + units_startup[t] - units_shutdown[t])
@@ -48,7 +48,7 @@ struct ThermalDispatch{G<:DispatchableThermalTech}
                 sum(units_startup[tt] for tt in last_n(t, min_uptime(tech), T)) <= units_committed[t])
 
             min_down_time = @constraint(m, [t in 1:T],
-                sum(units_shutdown[tt] for tt in last_n(t, min_downtime(tech), T)) <= num_units(tech) - units_committed[t])
+                sum(units_shutdown[tt] for tt in last_n(t, min_downtime(tech), T)) <= num_units(tech, invyear) - units_committed[t])
 
             dispatch_max = @constraint(m, [t in 1:T],
                 dispatch[t] <= unit_size(tech) * units_committed[t])
@@ -81,16 +81,17 @@ struct ThermalDispatch{G<:DispatchableThermalTech}
             min_up_time         = JuMP_LessThanConstraintRef[]
             min_down_time       = JuMP_LessThanConstraintRef[]
 
+            # TODO: Change this to rated capacity (incorporate deterministic derates)?
             dispatch_max = @constraint(m, [t in 1:T],
-                dispatch[t] <= nameplatecapacity(tech))
+                dispatch[t] <= nameplatecapacity(tech, invyear))
 
             dispatch_min  = JuMP_LessThanConstraintRef[]
 
             ramp_up_max = @constraint(m, [t in 1:T],
-                dispatch[t] - dispatch[prev_t(t, T)] <= max_unit_ramp(tech) * num_units(tech))
+                dispatch[t] - dispatch[prev_t(t, T)] <= max_unit_ramp(tech) * num_units(tech, invyear))
 
             ramp_down_max = @constraint(m, [t in 1:T],
-                dispatch[prev_t(t, T)] - dispatch[t] <= max_unit_ramp(tech) * num_units(tech))
+                dispatch[prev_t(t, T)] - dispatch[t] <= max_unit_ramp(tech) * num_units(tech, invyear))
 
         end
 
@@ -143,19 +144,19 @@ struct StorageDispatch{S<:DispatchableStorageTech}
     stor::S
 
     function StorageDispatch(
-        m::JuMP.Model, stor::S, period::DispatchDay) where S <: DispatchableStorageTech
+        m::JuMP.Model, stor::S, invyear::Int, period::DispatchDay) where S <: DispatchableStorageTech
 
         T = N_HOURS_IN_DAY
 
         charge = @variable(m, [1:T], lower_bound = 0)
-        fullname = join([name(stor), period.name], ",")
+        fullname = join([invyear, name(stor), period.name], ",")
         varnames!(charge, "stor_charge[$(fullname)]", 1:T)
 
         discharge = @variable(m, [1:T], lower_bound = 0)
         fullname = join([name(stor), period.name], ",")
         varnames!(discharge, "stor_discharge[$(fullname)]", 1:T)
 
-        capacity = maxpower(stor)
+        capacity = maxpower(stor, invyear)
         eff = sqrt(roundtrip_efficiency(stor))
 
         charge_max = @constraint(m, [t in 1:T], charge[t] <= capacity)
@@ -199,17 +200,17 @@ struct VariableDispatch{V<:DispatchableVariableTech}
     tech::V
 
     function VariableDispatch(
-        m::JuMP.Model, tech::V, period::DispatchDay
+        m::JuMP.Model, tech::V, invyear::Int, period::DispatchDay
     ) where V <: DispatchableVariableTech
 
         d = period.dispatchday_idx
 
         dispatch = @variable(m, [1:N_HOURS_IN_DAY], lower_bound = 0)
-        fullname = join([name(tech), period.name], ",")
+        fullname = join([invyear, name(tech), period.name], ",")
         varnames!(dispatch, "tech_dispatch[$(fullname)]", 1:N_HOURS_IN_DAY)
 
         dispatch_max = @constraint(m, [h in 1:N_HOURS_IN_DAY],
-            dispatch[h] <= availablecapacity(tech, 1, d, h))
+            dispatch[h] <= availablecapacity(tech, invyear, d, h))
 
         return new{V}(dispatch, dispatch_max, tech)
 
@@ -239,25 +240,25 @@ struct SystemDispatch{S<:DispatchableSystem}
     system::S
 
     function SystemDispatch(
-        m::JuMP.Model, system::S, period::DispatchDay, voll::Float64;
+        m::JuMP.Model, system::S, invyear::Int, period::DispatchDay, voll::Float64;
         unit_commitment::Bool=true
     ) where { S <: DispatchableSystem }
 
         d = period.dispatchday_idx
 
-        thermaldispatch = [ThermalDispatch(m, tech, period, unit_commitment=unit_commitment)
+        thermaldispatch = [ThermalDispatch(m, tech, invyear, period, unit_commitment=unit_commitment)
                            for tech in thermaltechs(system)]
 
-        variabledispatch = [VariableDispatch(m, tech, period)
+        variabledispatch = [VariableDispatch(m, tech, invyear, period)
                             for tech in variabletechs(system)]
 
-        storagedispatch = [StorageDispatch(m, tech, period)
+        storagedispatch = [StorageDispatch(m, tech, invyear, period)
                            for tech in storagetechs(system)]
 
         unserved_energy = isnan(voll) ? nothing : @variable(m, [1:N_HOURS_IN_DAY], lower_bound=0)
 
         powerbalance = @constraint(m, [h in 1:N_HOURS_IN_DAY],
-                demand(system, 1, d, h) ==
+                demand(system, invyear, d, h) ==
                 sum(gen.dispatch[h] for gen in thermaldispatch)
                 + sum(gen.dispatch[h] for gen in variabledispatch)
                 + sum(stor.dispatch[h] for stor in storagedispatch)

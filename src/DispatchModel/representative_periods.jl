@@ -8,7 +8,7 @@ applying the `grouper` function to the (year, dayofyear) pair. Then chooses
 day proxies based on the medoid day in each group, based on average demand
 and renewable availability.
 """
-function medoid_timegrouping(sys::SystemParams, grouper::Function)
+function medoid_timegrouping(sys::SystemParams, invyear::Int, grouper::Function)
 
     day_groups = [grouper(y, d)
         for (y, n_days) in enumerate(sys.times.dispatch_daycount)
@@ -31,7 +31,7 @@ function medoid_timegrouping(sys::SystemParams, grouper::Function)
 
         for (i, day_idx) in enumerate(group_days)
             mapping[day_idx] = group_idx
-            labels, features = extract_features(sys, n_features, day_idx)
+            labels, features = extract_features(sys, invyear, n_features, day_idx)
             group_features[:, i] = features
         end
 
@@ -46,23 +46,23 @@ function medoid_timegrouping(sys::SystemParams, grouper::Function)
 
 end
 
-singleperiod(sys::SystemParams) =
-    medoid_timegrouping(sys, (y, d) -> "Representative Period")
+singleperiod(sys::SystemParams, invyear::Int) =
+    medoid_timegrouping(sys, invyear, (y, d) -> "Representative Period")
 
-seasonalperiods(sys::SystemParams) =
-    medoid_timegrouping(sys, (y, d) -> daytoseason(d))
+seasonalperiods(sys::SystemParams, invyear::Int) =
+    medoid_timegrouping(sys, invyear, (y, d) -> daytoseason(d))
 
-weeklyperiods(sys::SystemParams) =
-    medoid_timegrouping(sys, (y, d) -> "W$(daytoweek(d))")
+weeklyperiods(sys::SystemParams, invyear::Int) =
+    medoid_timegrouping(sys, invyear, (y, d) -> "W$(daytoweek(d))")
 
-seasonalperiods_byyear(sys::SystemParams) =
-    medoid_timegrouping(sys, (y, d) -> "Y$y " * daytoseason(d))
+seasonalperiods_byyear(sys::SystemParams, invyear::Int) =
+    medoid_timegrouping(sys, invyear, (y, d) -> "Y$y " * daytoseason(d))
 
-weeklyperiods_byyear(sys::SystemParams) =
-    medoid_timegrouping(sys, (y, d) -> "Y$y W$(daytoweek(d))")
+weeklyperiods_byyear(sys::SystemParams, invyear::Int) =
+    medoid_timegrouping(sys, invyear, (y, d) -> "Y$y W$(daytoweek(d))")
 
-fullchronologyperiods(sys::SystemParams) =
-    medoid_timegrouping(sys, (y, d) -> "Y$y D$d")
+fullchronologyperiods(sys::SystemParams, invyear::Int) =
+    medoid_timegrouping(sys, invyear, (y, d) -> "Y$y D$d")
 
 daytoweek(d::Int) = string(div(d, 7) % 52 + 1)
 
@@ -87,24 +87,24 @@ num_features(sys::SystemParams) =
 Feature vector of average capacity factor for each technology
 + average demand, for the time period corresponding to ts
 """
-function extract_features(sys::SystemParams, n_features::Int, day_idx::Int)
+function extract_features(sys::SystemParams, invyear::Int, n_features::Int, day_idx::Int)
 
     feature_names = String[]
     feature_levels = Float64[]
 
     push!(feature_names, "avg_demand")
-    push!(feature_levels, mean(sys.demand[:, day_idx, 1]))
+    push!(feature_levels, mean(sys.demand[:, day_idx, invyear]))
 
     for tech in sys.variabletechs_existing
         tech_avg_cf =
-            mean(mean(site.availability[:, day_idx, 1]) for site in tech.sites)
+            mean(mean(site.availability[:, day_idx, invyear]) for site in tech.sites)
         push!(feature_names, tech.name)
         push!(feature_levels, tech_avg_cf)
     end
 
     for tech in sys.variabletechs_candidate
         tech_avg_cf =
-            mean(mean(site.availability[:, day_idx, 1]) for site in tech.sites)
+            mean(mean(site.availability[:, day_idx, invyear]) for site in tech.sites)
         push!(feature_names, tech.name)
         push!(feature_levels, tech_avg_cf)
     end

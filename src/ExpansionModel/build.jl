@@ -40,13 +40,13 @@ name(system::SystemExpansion) = system.params.name
 demand(system::SystemExpansion, i::Int, d::Int, h::Int) =
     demand(system.params, i, d, h)
 
-# demand(system::SystemExpansion, t::Int) =
-#     demand(system.params, t)
-
-cost(build::SystemExpansion) =
-    sum(cost(thermaltech) for thermaltech in build.thermaltechs; init=0) +
-    sum(cost(variabletech) for variabletech in build.variabletechs; init=0) +
-    sum(cost(storagetech) for storagetech in build.storagetechs; init=0)
+# Annualized costs in i-th investment period include annualized costs resulting
+# from all earlier investments
+cost(build::SystemExpansion, invyear::Int) = sum(
+    sum(cost(thermaltech, i) for thermaltech in build.thermaltechs; init=0) +
+    sum(cost(variabletech, i) for variabletech in build.variabletechs; init=0) +
+    sum(cost(storagetech, i) for storagetech in build.storagetechs; init=0)
+for i in 1:invyear)
 
 thermaltechs(system::SystemExpansion) =
     [system.thermaltechs; system.params.thermaltechs_existing]

@@ -17,7 +17,7 @@ import JuMP: value
 export iterate_ra_cem
 
 function iterate_ra_cem(
-    sys::SystemParams, base_chronology::DispatchProxyMapping,
+    sys::SystemParams, base_chronologies::Vector{DispatchProxyMapping},
     max_neue::Float64, optimizer; neue_tol::Float64=.001,
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     max_co2_intensity::Float64=NaN, # kg/MWh
@@ -44,13 +44,13 @@ function iterate_ra_cem(
 
     aug_start = now()
 
-    chronology = if aspp
-        add_stressperiod(sys, base_chronology, ram_result,
-                         skip_existing=skip_existing_stress_periods)
+    chronologies = if aspp
+        [add_stressperiod(sys, invyear, chrono, ram_result,
+                          skip_existing=skip_existing_stress_periods)
+         for (invyear, chrono) in enumerate(base_chronologies)]
     else
-        base_chronology
+        base_chronologies
     end
-
 
     aug_end = now()
 
@@ -79,7 +79,7 @@ function iterate_ra_cem(
         n_iters += 1
         cem_start = now()
 
-        cem = ExpansionProblem(sys, chronology, eue_estimator, max_eue,
+        cem = ExpansionProblem(sys, chronologies, eue_estimator, max_eue,
                                max_co2, co2_offset_price, optimizer,
                                unit_commitment=unit_commitment)
 
@@ -106,9 +106,10 @@ function iterate_ra_cem(
         aug_start = now()
 
         if aspp
-            chronology = add_stressperiod(
-                sys, chronology, ram_result,
-                skip_existing=skip_existing_stress_periods)
+            chronologies = [
+                add_stressperiod(sys, invyear, chrono, ram_result,
+                                 skip_existing=skip_existing_stress_periods)
+                 for (invyear, chrono) in enumerate(base_chronologies)]
         end
 
         if endog_risk
@@ -118,18 +119,28 @@ function iterate_ra_cem(
         aug_end = now()
 
         if persist
+
             store_start = now()
+
             store_iteration(con, n_iters)
             store_iteration_step(con, n_iters, "expansion", cem_start => cem_end)
             store_iteration_step(con, n_iters, "adequacy", ram_start => ram_end)
             store_iteration_step(con, n_iters, "augmentation", aug_start => aug_end)
+
             store(con, n_iters, cem.builds)
-            store(con, n_iters, cem.dispatch, sys_built.times)
+
+            for (i, dispatch) in enumerate(cem.dispatches)
+                store(con, n_iters, i, dispatch, sys_built.times)
+            end
+
             store(con, n_iters, ram_result)
+
             DBInterface.execute(con, "CHECKPOINT")
+
             store_end = now()
             store_iteration_step(con, n_iters, "persistence", store_start => store_end)
             DBInterface.execute(con, "CHECKPOINT")
+
         end
 
         prev_cem = cem
@@ -146,9 +157,8 @@ function iterate_ra_cem(
 
         pcm_start = now()
         n_iters += 1
-        fullchrono = fullchronologyperiods(sys_built, daylength=base_chronology.daylength)
-        pcm = DispatchProblem(sys_built, EconomicDispatch, fullchrono,
-                              optimizer, check_dispatch_voll)
+        fullchrono = fullchronologyperiods(sys_built)
+        pcm = DispatchProblem(sys_built, 1, fullchrono, optimizer, check_dispatch_voll)
         solve!(pcm)
         pcm_end = now()
 
@@ -165,9 +175,14 @@ function iterate_ra_cem(
 end
 
 function add_stressperiod(
-    sys::SystemParams, times::DispatchProxyMapping, adequacy::AdequacyResult;
+    sys::SystemParams, invyear::Int,
+    times::DispatchProxyMapping, adequacy::AdequacyResult;
     skip_existing::Bool=false
 )
+
+    # TODO: Only augmenting the first invyear for now, since multi-year
+    #       adequacy results aren't available yet
+    invyear == 1 || return times
 
     # TODO: Investigate using adequacy.generation_dEUEs (or both)?
     day_eues = vec(sum(adequacy.eues, dims=1))

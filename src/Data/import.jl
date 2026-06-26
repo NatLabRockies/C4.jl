@@ -37,7 +37,7 @@ function SystemParams(datadir::String)
 
 end
 
-function load_system(datadir::String)
+function load_system(datadir::String; base_year::InvestmentYear=Int16(2025))
 
     name = basename(datadir)
 
@@ -56,7 +56,7 @@ function load_system(datadir::String)
         disp_daycounts[dy] = maximum(x[3] for x in idxs if x[2] == dy)
     end
 
-    times = TimeIndices(invyears, disp_daycounts)
+    times = TimeIndices(base_year, invyears, disp_daycounts)
 
     check_dispatchidxs(idxs, times)
 

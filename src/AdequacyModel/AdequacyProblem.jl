@@ -25,6 +25,8 @@ struct AdequacyProblem
 
 end
 
+# TODO: Convert to generating AdequacyProblem from a generic DispatchableSystem
+#       (not just SystemParams - allows direct SystemExpansion conversion as well)
 function load_generators(sys::SystemParams)
 
     n_timesteps = n_dispatch_hours(sys.times)

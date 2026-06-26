@@ -28,19 +28,23 @@ display(sys)
 
 timestamp = Dates.format(now(), "yyyymmddHHMMSS")
 
-fullchrono = fullchronologyperiods(sys)
-repeatedchrono = singleperiod(sys)
+fullchrono = [fullchronologyperiods(sys, i)
+              for i in eachindex(sys.times.investment_years)]
+
+repeatedchrono = [singleperiod(sys, i)
+                  for i in eachindex(sys.times.investment_years)]
+
 null_eue = EUECuttingPlaneParams[]
 
 voll = 9000.
 
-pcm = DispatchProblem(sys, fullchrono, optimizer, voll=voll)
+pcm = DispatchProblem(sys, 1, first(fullchrono), optimizer, voll=voll)
 solve!(pcm)
 
 # Note that ExpansionProblem takes its target in terms of
 # unnormalized EUE and powerunits_MW!
 # Nonzero values need to be scaled appropriately
-# Here region.demand is already in powerunits_MW
+# Here total_demand is already in powerunits_MW
 max_eue = total_demand(sys) / 100_000 # 10 ppm
 
 # For iterate_ra_cem, which takes NEUE
@@ -118,7 +122,7 @@ ram = AdequacyProblem(sys_built, samples=100_000)
 ram_results = solve(ram)
 println("\nNEUE = ", neue(ram_results))
 
-pcm = DispatchProblem(sys_built, repeatedchrono, optimizer, voll=voll,
+pcm = DispatchProblem(sys_built, 1, first(repeatedchrono), optimizer, voll=voll,
                       unit_commitment=true)
 solve!(pcm)
 println("Operating Cost: ", value(cost(pcm)))

@@ -17,6 +17,8 @@ import ..DispatchableThermalTech, ..DispatchableVariableTech,
        ..variabletechs, ..storagetechs, ..thermaltechs,
        ..solve!, ..powerunits_MW, ..N_HOURS_IN_DAY
 
+import ..Data: annualization_factor
+
 using ..Data
 
 include("time.jl")
@@ -29,7 +31,7 @@ export DispatchProblem, DispatchSequence, DispatchDay, DispatchProxyMapping,
        seasonalperiods_byyear, monthlyperiods_byyear, weeklyperiods_byyear,
        dailyperiods, fullchronologyperiods,
        n_decision_days, n_represented_days, n_decision_hours,
-       n_represented_hours, annualization_factor
+       n_represented_hours
 
 struct DispatchProblem{D<:DispatchSequence}
 
@@ -40,13 +42,13 @@ struct DispatchProblem{D<:DispatchSequence}
     dispatch::D
 
     function DispatchProblem(
-        system::SystemParams, periods::DispatchProxyMapping,
+        system::SystemParams, invyear::Int, periods::DispatchProxyMapping,
         optimizer; voll::Float64=NaN, unit_commitment::Bool=true
     )
 
         m = JuMP.direct_model(optimizer)
 
-        dispatch = DispatchSequence(m, system, periods, voll,
+        dispatch = DispatchSequence(m, system, invyear, periods, voll,
                                     unit_commitment=unit_commitment)
 
         @objective(m, Min, annualization_factor(periods) * cost(dispatch))

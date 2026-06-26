@@ -39,8 +39,8 @@ function DuckDB.close(appender::DispatchAppender)
     return
 end
 
-function store(con::DBInterface.Connection, iter::Int, seq::DispatchSequence,
-               sys_times::TimeIndices) # TODO: More elegant way of passing this in
+function store(con::DBInterface.Connection, iter::Int, i::Int, seq::DispatchSequence,
+               sys_times::TimeIndices) # TODO: More elegant way of passing this in?
 
     DBInterface.execute(con, "CREATE TABLE IF NOT EXISTS periods (
         iteration INTEGER REFERENCES iterations(id),
@@ -78,8 +78,8 @@ function store(con::DBInterface.Connection, iter::Int, seq::DispatchSequence,
 
     appender = DispatchAppender(con)
 
-    store(appender, iter, seq.time, sys_times)
-    foreach(dispatch -> store(appender, iter, dispatch, sys_times), seq.dispatches)
+    store(appender, iter, i, seq.time, sys_times)
+    foreach(dispatch -> store(appender, iter, i, dispatch, sys_times), seq.dispatches)
 
     DuckDB.close(appender)
 
@@ -102,22 +102,20 @@ function store(con::DBInterface.Connection, iter::Int, seq::DispatchSequence,
 
 end
 
-function store(appender::DispatchAppender, iter::Int,
+function store(appender::DispatchAppender, iter::Int, i::Int,
                time::DispatchProxyMapping, times::TimeIndices)
 
     reps = zeros(Int, length(time.days))
     foreach(p_idx -> reps[p_idx] += 1, time.mapping)
-    foreach((p, n) -> store(appender, iter, p, n, times), time.days, reps)
+    foreach((p, n) -> store(appender, iter, i, p, n, times), time.days, reps)
 
 end
 
-function store(appender::DispatchAppender, iter::Int, period::DispatchDay,
-               reps::Int, times::TimeIndices)
-
-    invyear = first(times.investment_years)
+function store(appender::DispatchAppender, iter::Int, i::Int,
+               period::DispatchDay, reps::Int, times::TimeIndices)
 
     DuckDB.append(appender.periods, iter)
-    DuckDB.append(appender.periods, invyear)
+    DuckDB.append(appender.periods, times.investment_years[i])
     DuckDB.append(appender.periods, period.name)
     DuckDB.append(appender.periods, period.dispatchyear_idx)
     DuckDB.append(appender.periods, period.dispatchdayofyear_idx)
@@ -126,10 +124,10 @@ function store(appender::DispatchAppender, iter::Int, period::DispatchDay,
 
 end
 
-function store(appender::DispatchAppender, iter::Int, dispatch::SystemDispatch,
-               times::TimeIndices)
+function store(appender::DispatchAppender, iter::Int, i::Int,
+               dispatch::SystemDispatch, times::TimeIndices)
 
-    invyear = first(times.investment_years)
+    invyear = times.investment_years[i]
     d = dispatch.period.dispatchday_idx
 
     for h in 1:N_HOURS_IN_DAY

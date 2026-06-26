@@ -1,6 +1,7 @@
 const InvestmentYear = Int16
 
 struct TimeIndices
+    base_year::InvestmentYear
     investment_years::Vector{InvestmentYear}
     dispatch_daycount::Vector{Int} # day count for each weather year
 end
@@ -13,6 +14,8 @@ n_datapoints(tidxs::TimeIndices) = n_investment_years(tidxs) * n_dispatch_hours(
 
 dayidx(dispatch_year::Int, dispatch_dayofyear::Int, tidxs::TimeIndices) =
     sum(tidxs.dispatch_daycount[1:(dispatch_year-1)], init=0) + dispatch_dayofyear
+
+annualization_factor(times::TimeIndices) = 8766 / n_dispatch_days(times)
 
 function year_dayofyear(day_idx::Int, tidxs::TimeIndices)
 
@@ -35,6 +38,59 @@ days(times::TimeIndices) = (
         for year in eachindex(times.dispatch_daycount)
         for dayofyear in 1:times.dispatch_daycount[year]
 )
+
+
+function npv(
+    f::Function, x::T, times::TimeIndices, discount_rate::Float64
+) where T
+
+    result = 0
+    prev_year = times.base_year
+    discount = 1.0
+
+    for (i, year) in enumerate(times.investment_years)
+
+        scaling_factor = 0.
+
+        while prev_year < year
+            prev_year += 1
+            discount *= 1 - discount_rate
+            scaling_factor += discount
+        end
+
+        result += scaling_factor * f(x, i)
+
+    end
+
+    return result
+
+end
+
+function npv(
+    f::Function, xs::Vector{T}, times::TimeIndices, discount_rate::Float64
+) where T
+
+    result = 0
+    prev_year = times.base_year
+    discount = 1.0
+
+    for (year, x) in zip(times.investment_years, xs)
+
+        scaling_factor = 0.
+
+        while prev_year < year
+            prev_year += 1
+            discount *= 1 - discount_rate
+            scaling_factor += discount
+        end
+
+        result += scaling_factor * f(x)
+
+    end
+
+    return result
+
+end
 
 # TODO: Choose more application-agnostic names here?
 const InvestmentDataArray{T} = Vector{T} # n_investment_years
