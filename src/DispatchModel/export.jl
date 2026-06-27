@@ -14,7 +14,7 @@ function store(
     store(con, pcm.system)
     store_iteration(con, iter)
     store_iteration_step(con, iter, "dispatch", timings)
-    store(con, iter, pcm.dispatch, pcm.system.times)
+    store(con, iter, pcm.invyear, pcm.dispatch, pcm.system.times)
 
 end
 

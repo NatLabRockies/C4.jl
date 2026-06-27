@@ -80,7 +80,8 @@ function iterate_ra_cem(
         cem_start = now()
 
         cem = ExpansionProblem(sys, chronologies, eue_estimator, max_eue,
-                               max_co2, co2_offset_price, optimizer,
+                               optimizer,
+                               co2_max=max_co2, co2_offset_price=co2_offset_price,
                                unit_commitment=unit_commitment)
 
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)

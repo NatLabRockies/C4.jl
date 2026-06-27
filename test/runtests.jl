@@ -58,7 +58,7 @@ println("\nBase NEUE = ", neue(ram_results))
 
 println("\n\nCopper sheet system, repeated chronology, manual iteration")
 
-cem = ExpansionProblem(sys, repeatedchrono, null_eue, max_eue, NaN, NaN, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, null_eue, max_eue, optimizer)
 write_to_file(cem.model, "model.lp")
 solve!(cem)
 
@@ -72,7 +72,7 @@ println("\nNEUE = ", neue(ram_results))
 
 eue_params = [EUECuttingPlaneParams(cem.builds, ram_results)]
 
-cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, NaN, NaN, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, optimizer)
 write_to_file(cem.model, "model_riskcurves_1.lp")
 solve!(cem)
 
@@ -86,7 +86,7 @@ println("\nNEUE = ", neue(ram_results))
 
 push!(eue_params, EUECuttingPlaneParams(cem.builds, ram_results))
 
-cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, NaN, NaN, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, optimizer)
 write_to_file(cem.model, "model_riskcurves_2.lp")
 solve!(cem)
 
@@ -111,7 +111,7 @@ display(sys_built)
 println("NEUE: ", neue(ram))
 println("Capex: ", value(capex(cem)))
 println("Opex: ", value(opex(cem)))
-println("Carbon Offsets Cost: ", value(carbon_offset_cost(cem)))
+println("Carbon Offsets Cost: ", value(co2_offset_cost(cem)))
 println()
 
 println("System Cost: ", value(cost(cem)))
@@ -122,7 +122,16 @@ ram = AdequacyProblem(sys_built, samples=100_000)
 ram_results = solve(ram)
 println("\nNEUE = ", neue(ram_results))
 
-pcm = DispatchProblem(sys_built, 1, first(repeatedchrono), optimizer, voll=voll,
+pcm = DispatchProblem(sys_built, 1, first(repeatedchrono), optimizer,
+                      voll=voll, co2_max_intensity=50., co2_offset_price=100.,
                       unit_commitment=true)
 solve!(pcm)
-println("Operating Cost: ", value(cost(pcm)))
+println("2030 Operating Cost: ", value(cost(pcm)))
+println("2030 Carbon Offset Cost: ", value(co2_offset_cost(pcm)))
+
+pcm = DispatchProblem(sys_built, 2, last(repeatedchrono), optimizer,
+                      voll=voll, co2_max_intensity=50., co2_offset_price=100.,
+                      unit_commitment=true)
+solve!(pcm)
+println("2050 Operating Cost: ", value(cost(pcm)))
+println("2050 Carbon Offset Cost: ", value(co2_offset_cost(pcm)))

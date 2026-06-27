@@ -55,7 +55,7 @@ function ThermalExistingParams(tech::ThermalExpansion)
 
     new_site = ThermalExistingSiteParams(
         "",
-        round.(Int, value.(tech.units_new)),
+        cumsum(round.(Int, value.(tech.units_new))),
         params.λ,
         params.μ)
 

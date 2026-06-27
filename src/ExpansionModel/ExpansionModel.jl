@@ -16,7 +16,7 @@ import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
         ..cost_generation, ..cost_startup, ..co2_generation, ..co2_startup,
         ..max_unit_ramp, ..num_units, ..unit_size, ..min_gen,
         ..min_uptime, ..min_downtime,
-        ..demand, ..solve!, ..N_HOURS_IN_DAY
+        ..demand, ..solve!, ..N_HOURS_IN_DAY, ..co2_offset_cost
 
 import ..Data: ThermalExistingParams, ThermalCandidateParams,
                VariableExistingParams, VariableExistingSiteParams,
@@ -36,7 +36,7 @@ include("build.jl")
 include("riskestimates.jl")
 
 export ExpansionProblem, EUECuttingPlaneParams, warmstart_builds!, solve!,
-       capex, opex, carbon_offset_cost, cost, lcoe, emissions_intensity, nullestimator
+       capex, opex, cost, lcoe, co2_offset_cost, emissions_intensity, nullestimator
 
 mutable struct ExpansionProblem
 
@@ -51,18 +51,14 @@ mutable struct ExpansionProblem
 
     reliabilityconstraints::ReliabilityConstraints
 
-    carbon_offset_price::Float64
-    carbon_offsets::Union{JuMP.VariableRef,Nothing} # in annual tonnes CO2
-    co2_constraint::Union{JuMP_LessThanConstraintRef,Nothing}
-
     function ExpansionProblem(
         system::SystemParams,
         chronologies::Vector{DispatchProxyMapping},
         riskparams::Vector{EUECuttingPlaneParams},
         eue_max::Float64, # in powerunits_MWh
-        co2_max::Float64, # in annual tonnes CO2
-        carbon_offset_price::Float64, # $/tonne CO2
         optimizer;
+        co2_max::Float64=NaN, # in annual tonnes CO2
+        co2_offset_price::Float64=NaN, # $/tonne CO2
         unit_commitment::Bool=true,
         discount_rate::Float64=0.
     )
@@ -82,31 +78,20 @@ mutable struct ExpansionProblem
         builds = SystemExpansion(m, system)
 
         dispatches = [
-            DispatchSequence(m, builds, i, chronology, unit_commitment=unit_commitment)
+            DispatchSequence(m, builds, i, chronology,
+                             co2_max=co2_max, co2_offset_price=co2_offset_price,
+                             unit_commitment=unit_commitment)
         for (i, chronology) in enumerate(chronologies)]
 
         reliabilityconstraints = ReliabilityConstraints(
             m, builds, riskparams, eue_max)
 
-        if isnan(co2_max)
-            carbon_offsets = co2_constraint = nothing
-            carbon_offset_cost = 0
-        else
-            carbon_offsets = @variable(m, lower_bound=0)
-            co2_constraint = @constraint(m,
-                co2(first(dispatches)) - carbon_offsets <= co2_max)
-            carbon_offset_cost = carbon_offset_price * carbon_offsets
-        end
-
         @objective(m, Min,
             npv(cost, builds, system.times, discount_rate) +
             annualization_factor(system.times) *
-                npv(cost, dispatches, system.times, discount_rate) +
-            annualization_factor(system.times) * carbon_offset_cost
-        )
+                npv(cost, dispatches, system.times, discount_rate))
 
-        return new(m, system, builds, dispatches, reliabilityconstraints,
-                   carbon_offset_price, carbon_offsets, co2_constraint)
+        return new(m, system, builds, dispatches, reliabilityconstraints)
 
     end
 
@@ -158,7 +143,11 @@ function solve!(prob::ExpansionProblem)
 
 end
 
+# TODO: Is it more useful to report these outcomes (especially relative ones
+# like carbon intensity and LCOE) by investment year, rather than in aggregate?
+
 # Capex is annualized, so scale opex to approximate an annual cost
+# Note that opex includes any carbon offset costs
 opex(prob::ExpansionProblem; discount_rate::Float64=0.) =
     annualization_factor(prob.system.times) *
     npv(cost, prob.dispatches, prob.system.times, discount_rate)
@@ -167,32 +156,25 @@ capex(prob::ExpansionProblem; discount_rate::Float64=0.) =
     npv(cost, prob.builds, prob.system.times, discount_rate)
 
 # Capex is annualized, so scale carbon offset cost to approximate an annual cost
-function carbon_offset_cost(prob::ExpansionProblem)
+co2_offset_cost(prob::ExpansionProblem; discount_rate::Float64=0.) =
+    annualization_factor(prob.system.times) *
+    npv(co2_offset_cost, prob.dispatches, prob.system.times, discount_rate)
 
-    if isnothing(prob.carbon_offsets)
-        0
-    else
-        annualization_factor(prob.system.times) *
-            prob.carbon_offset_price * prob.carbon_offsets
-    end
-
-end
-
-cost(prob::ExpansionProblem) = capex(prob) + opex(prob) + carbon_offset_cost(prob)
+cost(prob::ExpansionProblem) = capex(prob) + opex(prob)
 
 """
 CO2 emissions in annualized tonnes
 """
 co2(prob::ExpansionProblem) =
-    annualization_factor(prob.system.times) * co2(first(prob.dispatches))
+    annualization_factor(prob.system.times) *
+        npv(co2, prob.dispatches, prob.system.times, 0.0)
 
 function lcoe(prob::ExpansionProblem)
 
     # Note: total demand used here is the full-chronology demand annualized,
     #       not necessarily what economic dispatch sees
-    demand = sum(total_demand(prob.system, i)
-                 for i in eachindex(prob.system.times.investment_years)) *
-            powerunits_MW * annualization_factor(prob.system.times)
+    demand = npv(total_demand, prob.system, prob.system.times, 0.0) *
+                    powerunits_MW * annualization_factor(prob.system.times)
 
     return cost(prob) / demand
 
@@ -205,8 +187,8 @@ function emissions_intensity(prob::ExpansionProblem)
 
     # Note: total demand used here is the full-chronology demand annualized,
     #       not necessarily what economic dispatch sees
-    demand = total_demand(prob.system) * powerunits_MW *
-        annualization_factor(prob.system.times)
+    demand = npv(total_demand, prob.system, prob.system.times, 0.0) *
+                    powerunits_MW * annualization_factor(prob.system.times)
 
     # Convert CO2 from tonnes to kg
     return co2(prob) * 1e3 / demand

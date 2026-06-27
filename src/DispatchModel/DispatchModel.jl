@@ -15,7 +15,7 @@ import ..DispatchableThermalTech, ..DispatchableVariableTech,
        ..name, ..cost, ..co2, ..cost_generation, ..cost_startup,
        ..co2_generation, ..co2_startup, ..demand,
        ..variabletechs, ..storagetechs, ..thermaltechs,
-       ..solve!, ..powerunits_MW, ..N_HOURS_IN_DAY
+       ..solve!, ..powerunits_MW, ..N_HOURS_IN_DAY, ..co2_offset_cost
 
 import ..Data: annualization_factor
 
@@ -31,29 +31,36 @@ export DispatchProblem, DispatchSequence, DispatchDay, DispatchProxyMapping,
        seasonalperiods_byyear, monthlyperiods_byyear, weeklyperiods_byyear,
        dailyperiods, fullchronologyperiods,
        n_decision_days, n_represented_days, n_decision_hours,
-       n_represented_hours
+       n_represented_hours, cost, co2, co2_offset_cost
 
 struct DispatchProblem{D<:DispatchSequence}
 
     model::JuMP.Model
 
     system::SystemParams
+    invyear::Int
 
     dispatch::D
 
     function DispatchProblem(
         system::SystemParams, invyear::Int, periods::DispatchProxyMapping,
-        optimizer; voll::Float64=NaN, unit_commitment::Bool=true
+        optimizer; voll::Float64=NaN, co2_max_intensity::Float64=NaN,
+        co2_offset_price::Float64=999., unit_commitment::Bool=true
     )
+
+        co2_max = co2_max_intensity * total_demand(system, invyear) *
+                    powerunits_MW * 1e-3
 
         m = JuMP.direct_model(optimizer)
 
-        dispatch = DispatchSequence(m, system, invyear, periods, voll,
+        dispatch = DispatchSequence(m, system, invyear, periods, voll=voll,
+                                    co2_max=co2_max,
+                                    co2_offset_price=co2_offset_price,
                                     unit_commitment=unit_commitment)
 
         @objective(m, Min, annualization_factor(periods) * cost(dispatch))
 
-        return new{typeof(dispatch)}(m, system, dispatch)
+        return new{typeof(dispatch)}(m, system, invyear, dispatch)
 
     end
 
@@ -72,6 +79,12 @@ end
 
 cost(prob::DispatchProblem) =
     annualization_factor(prob.dispatch.time) * cost(prob.dispatch)
+
+co2(prob::DispatchProblem) =
+    annualization_factor(prob.dispatch.time) * co2(prob.dispatch)
+
+co2_offset_cost(prob::DispatchProblem) =
+    annualization_factor(prob.dispatch.time) * co2_offset_cost(prob.dispatch)
 
 include("export.jl")
 

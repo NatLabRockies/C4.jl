@@ -32,7 +32,7 @@ availability(site::VariableSiteExpansion, i::Int, d::Int, h::Int) =
 VariableExistingSiteParams(build::VariableSiteExpansion) =
     VariableExistingSiteParams(
         build.params.name,
-        value.(build.capacity_new),
+        cumsum(value.(build.capacity_new)),
         build.params.availability)
 
 VariableCandidateSiteParams(build::VariableSiteExpansion) =

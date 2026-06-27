@@ -48,9 +48,9 @@ end
 
 function StorageExistingParams(tech::StorageExpansion)
 
-    new_power = value.(tech.power_new)
-    new_energy = value.(tech.energy_new)
-    new_duration = [iszero(new_power[i]) ? 0. : sum(new_energy[1:i]) / sum(new_power[1:i])
+    new_power = cumsum(value.(tech.power_new))
+    new_energy = cumsum(value.(tech.energy_new))
+    new_duration = [iszero(new_power[i]) ? 0. : new_energy[i] / new_power[i]
                     for i in eachindex(new_power)]
 
     params = tech.params

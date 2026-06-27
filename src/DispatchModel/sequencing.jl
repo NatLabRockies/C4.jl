@@ -72,25 +72,47 @@ struct DispatchSequence{S <: DispatchableSystem}
     dispatches::Vector{SystemDispatch{S}}
     recurrences::Vector{DispatchRecurrence{S}}
 
+    co2_offsets::Union{JuMP.VariableRef,Nothing} # tonnes CO2
+    co2_constraint::Union{JuMP_LessThanConstraintRef,Nothing} # tonnes CO2
+    co2_offset_price::Float64 # $/tonne CO2
+
     function DispatchSequence(
-        m::JuMP.Model, system::S, invyear::Int, time::DispatchProxyMapping,
-        voll::Float64=NaN; unit_commitment::Bool=true
+        m::JuMP.Model, system::S, invyear::Int, time::DispatchProxyMapping;
+        voll::Float64=NaN, co2_max::Float64=NaN, co2_offset_price::Float64=999.,
+        unit_commitment::Bool=true
     ) where {S <: DispatchableSystem}
 
-        dispatches = [SystemDispatch(m, system, invyear, day, voll, unit_commitment=unit_commitment)
+        dispatches = [SystemDispatch(m, system, invyear, day, voll,
+                                     unit_commitment=unit_commitment)
                       for day in time.days]
+
         recurrences = sequence_recurrences(m, system, dispatches, invyear, time)
-        new{S}(time, dispatches, recurrences)
+
+        if isnan(co2_max)
+            co2_offsets = co2_constraint = nothing
+        else
+            co2_offsets = @variable(m, lower_bound=0)
+            co2_total = sum(co2(recc) for recc in recurrences; init=0)
+            co2_constraint = @constraint(m, co2_total - co2_offsets <= co2_max)
+        end
+
+        new{S}(time, dispatches, recurrences,
+               co2_offsets, co2_constraint, co2_offset_price)
 
     end
 
 end
 
-cost(sequence::DispatchSequence) =
-    sum(cost(recurrence) for recurrence in sequence.recurrences; init=0)
-
 co2(sequence::DispatchSequence) =
     sum(co2(recurrence) for recurrence in sequence.recurrences; init=0)
+
+co2_offset_cost(sequence::DispatchSequence) =
+    (isnothing(sequence.co2_offsets) ? 0. :
+        sequence.co2_offsets * sequence.co2_offset_price)
+
+cost(sequence::DispatchSequence) =
+    sum(cost(recurrence) for recurrence in sequence.recurrences; init=0) +
+    co2_offset_cost(sequence)
 
 function sequence_recurrences(
     m::JuMP.Model, system::S, dispatches::Vector{SystemDispatch{S}},

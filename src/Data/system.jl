@@ -96,36 +96,39 @@ function Base.show(io::IO, ::MIME"text/plain", sys::SystemParams)
     n_dispatchyears = length(sys.times.dispatch_daycount)
     println(io, n_invyears, " investment years each with ",
             n_dispatchyears, " dispatch years")
-    println(io, "(only showing first investment year here)")
 
-    peak_load = maximum(sys.demand[:,:,1]) * powerunits_MW
-    println(io, "Peak Load: ", peak_load, " MW")
+    for (i, year) in enumerate(sys.times.investment_years)
 
-    has_thermal = length(sys.thermaltechs_existing) > 0
-    has_variable = length(sys.variabletechs_existing) > 0
-    has_storage = length(sys.storagetechs_existing) > 0
+        peak_load = maximum(sys.demand[:,:,i]) * powerunits_MW
+        println(io, "\n", year, " Peak Load: ", peak_load, " MW")
 
-    has_thermal || has_variable || has_storage || println(io, "\t(No resources)")
+        has_thermal = length(sys.thermaltechs_existing) > 0
+        has_variable = length(sys.variabletechs_existing) > 0
+        has_storage = length(sys.storagetechs_existing) > 0
 
-    for thermaltech in sys.thermaltechs_existing
-        println(io, "\t", thermaltech.name, ":")
-        for site in thermaltech.sites
-            println(io, "\t\t", site.name, ": ",
-                    site.units[1], " x ", thermaltech.unit_size * powerunits_MW, " MW")
+        has_thermal || has_variable || has_storage || println(io, "\t(No resources)")
+
+        for thermaltech in sys.thermaltechs_existing
+            println(io, "\t", thermaltech.name, ":")
+            for site in thermaltech.sites
+                println(io, "\t\t", site.name, ": ",
+                        site.units[i], " x ", thermaltech.unit_size * powerunits_MW, " MW")
+            end
         end
-    end
 
-    for variabletech in sys.variabletechs_existing
-        capacity = nameplatecapacity(variabletech)
-        iszero(capacity) && continue
-        println(io, "\t", variabletech.name, ": ", capacity * powerunits_MW, " MW")
-    end
+        for variabletech in sys.variabletechs_existing
+            capacity = nameplatecapacity(variabletech, i)
+            iszero(capacity) && continue
+            println(io, "\t", variabletech.name, ": ", capacity * powerunits_MW, " MW")
+        end
 
-    for storagetech in sys.storagetechs_existing
-        power, energy = maxpower(storagetech), maxenergy(storagetech)
-        iszero(power) && continue
-        println(io, "\t", storagetech.name, ": ",
-                power * powerunits_MW, " MW (", energy / power, " h)")
+        for storagetech in sys.storagetechs_existing
+            power, energy = maxpower(storagetech, i), maxenergy(storagetech, i)
+            iszero(power) && continue
+            println(io, "\t", storagetech.name, ": ",
+                    power * powerunits_MW, " MW (", energy / power, " h)")
+        end
+
     end
 
 end
