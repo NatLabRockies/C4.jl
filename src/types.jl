@@ -40,7 +40,7 @@ function name end
 function sites end
 function cost_generation end
 
-nameplatecapacity(tech::DispatchableVariableTech, invyear::Int=1) =
+nameplatecapacity(tech::DispatchableVariableTech, invyear::Int) =
     sum(nameplatecapacity(site, invyear) for site in sites(tech); init=0)
 
 availablecapacity(tech::DispatchableVariableTech, invyear::Int, day::Int, hour::Int) =

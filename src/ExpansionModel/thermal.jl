@@ -19,7 +19,7 @@ struct ThermalExpansion <: DispatchableThermalTech
 
 end
 
-nameplatecapacity(tech::ThermalExpansion, i::Int=1) =
+nameplatecapacity(tech::ThermalExpansion, i::Int) =
         sum(tech.units_new[1:i]) * tech.params.unit_size
 
 ratedcapacity(tech::ThermalExpansion, invyear::Int, day::Int, hour::Int) =
@@ -28,19 +28,19 @@ ratedcapacity(tech::ThermalExpansion, invyear::Int, day::Int, hour::Int) =
 expectedcapacity(tech::ThermalExpansion, invyear::Int, day::Int, hour::Int) =
     ratedcapacity(tech, invyear) * availability(tech.params, invyear, day, hour)
 
-cost(build::ThermalExpansion, invyear::Int=1) =
+cost(build::ThermalExpansion, invyear::Int) =
     build.units_new[invyear] * build.params.unit_size * build.params.cost_capital[invyear]
 
-cost_startup(build::ThermalExpansion, invyear::Int=1) =
+cost_startup(build::ThermalExpansion, invyear::Int) =
     cost_startup(build.params, invyear)
 
-cost_generation(tech::ThermalExpansion, invyear::Int=1) =
+cost_generation(tech::ThermalExpansion, invyear::Int) =
     cost_generation(tech.params, invyear)
 
 co2_startup(build::ThermalExpansion) = co2_startup(build.params)
 co2_generation(tech::ThermalExpansion) = co2_generation(tech.params)
 
-num_units(tech::ThermalExpansion, i::Int=1) = tech.units_new[i]
+num_units(tech::ThermalExpansion, i::Int) = tech.units_new[i]
 
 unit_size(tech::ThermalExpansion) = tech.params.unit_size
 

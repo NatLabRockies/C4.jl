@@ -8,7 +8,7 @@ struct StorageExistingParams <: DispatchableStorageTech
     name::String
     category::String
 
-    duration::Float64 # hours
+    duration::InvestmentDataArray{Float64} # hours
     roundtrip_efficiency::Float64
 
     cost_vom::InvestmentDataArray{Float64} # $/MWh
@@ -19,14 +19,14 @@ end
 
 tech(::Type{StorageExistingSiteParams}) = StorageExistingParams
 
-maxpower(tech::StorageExistingParams, i::Int=1) =
+maxpower(tech::StorageExistingParams, i::Int) =
     sum(site.capacity[i] for site in tech.sites; init=0)
 
-maxenergy(tech::StorageExistingParams, i::Int=1) = maxpower(tech, i) * tech.duration
+maxenergy(tech::StorageExistingParams, i::Int) = maxpower(tech, i) * tech.duration[i]
 
 roundtrip_efficiency(tech::StorageExistingParams) = tech.roundtrip_efficiency
 
-operating_cost(tech::StorageExistingParams, i::Int=1) = tech.cost_vom[i]
+operating_cost(tech::StorageExistingParams, i::Int) = tech.cost_vom[i]
 
 struct StorageCandidateParams
 

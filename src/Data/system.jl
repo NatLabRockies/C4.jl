@@ -42,7 +42,7 @@ name(sys::SystemParams) = sys.name
 demand(sys::SystemParams, invyear::Int, day::Int, hour::Int) =
     sys.demand[hour, day, invyear]
 
-total_demand(sys::SystemParams, invyear::Int=1) = sum(sys.demand[:, :, invyear])
+total_demand(sys::SystemParams, invyear::Int) = sum(sys.demand[:, :, invyear])
 
 thermaltechs(sys::SystemParams) = sys.thermaltechs_existing
 variabletechs(sys::SystemParams) = sys.variabletechs_existing

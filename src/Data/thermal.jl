@@ -43,7 +43,7 @@ end
 
 tech(::Type{ThermalExistingSiteParams}) = ThermalExistingParams
 
-nameplatecapacity(tech::ThermalExistingParams, invyear::Int=1) =
+nameplatecapacity(tech::ThermalExistingParams, invyear::Int) =
     tech.unit_size * sum(site.units[invyear] for site in tech.sites; init=0)
 
 ratedcapacity(tech::ThermalExistingParams, invyear::Int, day::Int, hour::Int) =
@@ -54,10 +54,10 @@ expectedcapacity(tech::ThermalExistingParams, invyear::Int, day::Int, hour::Int)
         site.units[invyear] * availability(site, invyear, day, hour)
         for site in tech.sites; init=0)
 
-cost_startup(tech::ThermalExistingParams, invyear::Int=1) =
+cost_startup(tech::ThermalExistingParams, invyear::Int) =
     tech.startup_heat * tech.fuel.cost[invyear]
 
-cost_generation(tech::ThermalExistingParams, invyear::Int=1) =
+cost_generation(tech::ThermalExistingParams, invyear::Int) =
     tech.heat_rate * tech.fuel.cost[invyear] + tech.cost_vom[invyear]
 
 co2_startup(tech::ThermalExistingParams) =
@@ -66,7 +66,7 @@ co2_startup(tech::ThermalExistingParams) =
 co2_generation(tech::ThermalExistingParams) =
     tech.heat_rate * tech.fuel.co2_factor
 
-num_units(tech::ThermalExistingParams, invyear::Int=1) =
+num_units(tech::ThermalExistingParams, invyear::Int) =
     sum(site.units[invyear] for site in tech.sites; init=0)
 
 unit_size(tech::ThermalExistingParams) = tech.unit_size
@@ -103,10 +103,10 @@ struct ThermalCandidateParams
 
 end
 
-cost_startup(tech::ThermalCandidateParams, invyear::Int=1) =
+cost_startup(tech::ThermalCandidateParams, invyear::Int) =
     tech.startup_heat * tech.fuel.cost[invyear]
 
-cost_generation(tech::ThermalCandidateParams, invyear::Int=1) =
+cost_generation(tech::ThermalCandidateParams, invyear::Int) =
     tech.heat_rate * tech.fuel.cost[invyear] + tech.cost_vom[invyear]
 
 co2_startup(tech::ThermalCandidateParams) =

@@ -58,43 +58,49 @@ function store(con::DBInterface.Connection, iter::Int, result::AdequacyResult)
         demand DOUBLE,
         eue DOUBLE,
         eue_std DOUBLE,
-        lole DOUBLE,
-        lole_std DOUBLE,
+        lolp DOUBLE,
+        lolp_std DOUBLE,
         PRIMARY KEY (iteration, year, dispyear, dayofyear, hourofday)
     )")
 
     appender = AdequacyAppender(con)
-    invyear = first(result.times.investment_years)
+    for (i, invyear) in enumerate(result.times.investment_years)
 
-    demand = sum(result.demand)
-    eue = sum(result.eues)
-    lole = sum(result.lolps)
+        demand = sum(result.demand[:, :, i])
+        eue = sum(result.eues[:, :, i])
+        lole = sum(result.lolps[:, :, i])
 
-    DuckDB.append(appender.adequacies, iter)
-    DuckDB.append(appender.adequacies, invyear)
-    DuckDB.append(appender.adequacies, demand)
-    DuckDB.append(appender.adequacies, eue)
-    DuckDB.append(appender.adequacies, nothing)
-    DuckDB.append(appender.adequacies, lole)
-    DuckDB.append(appender.adequacies, nothing)
-    DuckDB.end_row(appender.adequacies)
+        DuckDB.append(appender.adequacies, iter)
+        DuckDB.append(appender.adequacies, invyear)
+        DuckDB.append(appender.adequacies, demand)
+        DuckDB.append(appender.adequacies, eue)
+        DuckDB.append(appender.adequacies, nothing)
+        DuckDB.append(appender.adequacies, lole)
+        DuckDB.append(appender.adequacies, nothing)
+        DuckDB.end_row(appender.adequacies)
 
-    for (d, (year, dayofyear)) in enumerate(days(result.times))
-        for hourofday in 1:N_HOURS_IN_DAY
+        for (d, (year, dayofyear)) in enumerate(days(result.times))
+            for hourofday in 1:N_HOURS_IN_DAY
 
-            DuckDB.append(appender.timestep_adequacies, iter)
-            DuckDB.append(appender.timestep_adequacies, invyear)
-            DuckDB.append(appender.timestep_adequacies, year)
-            DuckDB.append(appender.timestep_adequacies, dayofyear)
-            DuckDB.append(appender.timestep_adequacies, hourofday)
-            DuckDB.append(appender.timestep_adequacies, result.demand[hourofday, d])
-            DuckDB.append(appender.timestep_adequacies, result.eues[hourofday, d])
-            DuckDB.append(appender.timestep_adequacies, nothing)
-            DuckDB.append(appender.timestep_adequacies, result.lolps[hourofday, d])
-            DuckDB.append(appender.timestep_adequacies, nothing)
-            DuckDB.end_row(appender.timestep_adequacies)
+                demand = result.demand[hourofday, d, i]
+                eue = result.eues[hourofday, d, i]
+                lolp = result.lolps[hourofday, d, i]
 
+                DuckDB.append(appender.timestep_adequacies, iter)
+                DuckDB.append(appender.timestep_adequacies, invyear)
+                DuckDB.append(appender.timestep_adequacies, year)
+                DuckDB.append(appender.timestep_adequacies, dayofyear)
+                DuckDB.append(appender.timestep_adequacies, hourofday)
+                DuckDB.append(appender.timestep_adequacies, demand)
+                DuckDB.append(appender.timestep_adequacies, eue)
+                DuckDB.append(appender.timestep_adequacies, nothing)
+                DuckDB.append(appender.timestep_adequacies, lolp)
+                DuckDB.append(appender.timestep_adequacies, nothing)
+                DuckDB.end_row(appender.timestep_adequacies)
+
+            end
         end
+
     end
 
     DuckDB.close(appender)

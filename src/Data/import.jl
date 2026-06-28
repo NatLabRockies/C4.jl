@@ -409,7 +409,10 @@ function load_existing_storagetechs!(system::SystemParams, datadir::String)
         techname = string(techs[r, 1])
         category = string(techs[r, 2])
 
-        duration = Float64(techs[r, 3])
+        # We need duration to be able to change over years internally, but don't
+        # want to expose this to the user in the input format
+        duration = defaultinvestmentdata(system.times, Float64(techs[r, 3]))
+
         roundtrip_efficiency = Float64(techs[r, 4])
 
         cost_vom = defaultinvestmentdata(system.times, 0.)

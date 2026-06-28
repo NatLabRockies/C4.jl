@@ -34,7 +34,7 @@ fullchrono = [fullchronologyperiods(sys, i)
 repeatedchrono = [singleperiod(sys, i)
                   for i in eachindex(sys.times.investment_years)]
 
-null_eue = EUECuttingPlaneParams[]
+null_eue = [EUECuttingPlaneParams[], EUECuttingPlaneParams[]]
 
 voll = 9000.
 
@@ -45,20 +45,23 @@ solve!(pcm)
 # unnormalized EUE and powerunits_MW!
 # Nonzero values need to be scaled appropriately
 # Here total_demand is already in powerunits_MW
-max_eue = total_demand(sys) / 100_000 # 10 ppm
+max_eues = [
+    total_demand(sys, 1) / 100_000 # 2030 10 ppm
+    total_demand(sys, 2) / 100_000 # 2050 10 ppm
+]
 
 # For iterate_ra_cem, which takes NEUE
 max_neue = 10.
 
 ram = AdequacyProblem(sys, samples=1000)
 ram_results = solve(ram)
-println("\nBase NEUE = ", neue(ram_results))
+println("\nBase NEUEs = ", neues(ram_results))
 
 # Formulate and solve a one-off CEM without risk curves
 
 println("\n\nCopper sheet system, repeated chronology, manual iteration")
 
-cem = ExpansionProblem(sys, repeatedchrono, null_eue, max_eue, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, null_eue, max_eues, optimizer)
 write_to_file(cem.model, "model.lp")
 solve!(cem)
 
@@ -68,11 +71,11 @@ println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, samples=1000)
 ram_results = solve(ram) # Dig into these results
-println("\nNEUE = ", neue(ram_results))
+println("\nNEUEs = ", neues(ram_results))
 
-eue_params = [EUECuttingPlaneParams(cem.builds, ram_results)]
+eue_params = [[EUECuttingPlaneParams(cem.builds, ram_results, i)] for i in 1:2]
 
-cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eues, optimizer)
 write_to_file(cem.model, "model_riskcurves_1.lp")
 solve!(cem)
 
@@ -82,11 +85,13 @@ println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, samples=1000)
 ram_results = solve(ram)
-println("\nNEUE = ", neue(ram_results))
+println("\nNEUEs = ", neues(ram_results))
 
-push!(eue_params, EUECuttingPlaneParams(cem.builds, ram_results))
+for i in 1:2
+    push!(eue_params[i], EUECuttingPlaneParams(cem.builds, ram_results, i))
+end
 
-cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eues, optimizer)
 write_to_file(cem.model, "model_riskcurves_2.lp")
 solve!(cem)
 
@@ -96,7 +101,7 @@ println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, samples=1000)
 ram_results = solve(ram)
-println("\nNEUE = ", neue(ram_results))
+println("\nNEUEs = ", neues(ram_results))
 
 println("\nSingle-region Iterative CEM:")
 cem, ram, pcm = iterate_ra_cem(
@@ -108,7 +113,7 @@ cem, ram, pcm = iterate_ra_cem(
 sys_built = SystemParams(cem)
 display(sys_built)
 
-println("NEUE: ", neue(ram))
+println("NEUEs: ", neues(ram))
 println("Capex: ", value(capex(cem)))
 println("Opex: ", value(opex(cem)))
 println("Carbon Offsets Cost: ", value(co2_offset_cost(cem)))
@@ -120,7 +125,7 @@ println("System Emissions Intensity: ", value(emissions_intensity(cem)))
 
 ram = AdequacyProblem(sys_built, samples=100_000)
 ram_results = solve(ram)
-println("\nNEUE = ", neue(ram_results))
+println("\nNEUEs = ", neues(ram_results))
 
 pcm = DispatchProblem(sys_built, 1, first(repeatedchrono), optimizer,
                       voll=voll, co2_max_intensity=50., co2_offset_price=100.,

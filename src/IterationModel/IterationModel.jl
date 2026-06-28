@@ -30,17 +30,18 @@ function iterate_ra_cem(
     persist = length(outfile) > 0
     timeout += time()
 
-    demand = total_demand(sys)
+    demands = [total_demand(sys, i) for i in eachindex(base_chronologies)]
 
-    max_eue = max_neue * demand * 1e-6
-    max_co2 = max_co2_intensity * (demand * powerunits_MW) * 1e-3 # in tonnes
+    max_eues = max_neue .* demands .* 1e-6
+    max_co2s = max_co2_intensity .* (demands .* powerunits_MW) .* 1e-3 # in tonnes
 
     ram_start = now()
     ram = AdequacyProblem(sys, samples=nsamples)
     ram_result = solve(ram)
     ram_end = now()
 
-    println("NEUE: ", neue(ram_result), "\tLOLE: ", sum(ram_result.lolps))
+    println("NEUEs: ", neues(ram_result),
+            "\tLOLEs: ", vec(sum(ram_result.lolps, dims=(1,2))))
 
     aug_start = now()
 
@@ -72,16 +73,16 @@ function iterate_ra_cem(
     n_iters = 0
 
     # Shouldn't we use initial RA results here? Right now they're only used for ASPP
-    eue_estimator = EUECuttingPlaneParams[]
+    eue_estimator = [EUECuttingPlaneParams[] for i in eachindex(base_chronologies)]
 
     while (time() < timeout)
 
         n_iters += 1
         cem_start = now()
 
-        cem = ExpansionProblem(sys, chronologies, eue_estimator, max_eue,
+        cem = ExpansionProblem(sys, chronologies, eue_estimator, max_eues,
                                optimizer,
-                               co2_max=max_co2, co2_offset_price=co2_offset_price,
+                               co2_max=max_co2s, co2_offset_price=co2_offset_price,
                                unit_commitment=unit_commitment)
 
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
@@ -100,9 +101,12 @@ function iterate_ra_cem(
         ram_result = solve(ram)
         ram_end = now()
 
-        println("NEUE: ", neue(ram_result), "\tLOLE: ", sum(ram_result.lolps))
+        println("NEUEs: ", neues(ram_result),
+                "\tLOLEs: ", vec(sum(ram_result.lolps, dims=(1,2))))
 
-        is_adequate = neue(ram_result) <= max_neue * (1 + neue_tol)
+        is_adequate = all(
+            neue(ram_result, i) <= max_neue * (1 + neue_tol)
+            for i in eachindex(base_chronologies))
 
         aug_start = now()
 
@@ -114,7 +118,9 @@ function iterate_ra_cem(
         end
 
         if endog_risk
-            push!(eue_estimator, EUECuttingPlaneParams(cem.builds, ram_result))
+            for i in eachindex(base_chronologies)
+                push!(eue_estimator[i], EUECuttingPlaneParams(cem.builds, ram_result, i))
+            end
         end
 
         aug_end = now()
@@ -181,12 +187,8 @@ function add_stressperiod(
     skip_existing::Bool=false
 )
 
-    # TODO: Only augmenting the first invyear for now, since multi-year
-    #       adequacy results aren't available yet
-    invyear == 1 || return times
-
     # TODO: Investigate using adequacy.generation_dEUEs (or both)?
-    day_eues = vec(sum(adequacy.eues, dims=1))
+    day_eues = vec(sum(adequacy.eues[:, :, invyear], dims=1))
     og_new_day_idx = argmax(day_eues)
 
     new_day_idx = og_new_day_idx

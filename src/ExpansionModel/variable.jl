@@ -22,7 +22,7 @@ struct VariableSiteExpansion <: DispatchableVariableSite
 
 end
 
-function nameplatecapacity(site::VariableSiteExpansion, i::Int=1)
+function nameplatecapacity(site::VariableSiteExpansion, i::Int)
     return sum(site.capacity_new[1:i])
 end
 
@@ -66,9 +66,9 @@ end
 
 sites(tech::VariableExpansion) = tech.sites
 
-cost_generation(tech::VariableExpansion, invyear::Int=1) = tech.params.cost_vom[invyear]
+cost_generation(tech::VariableExpansion, invyear::Int) = tech.params.cost_vom[invyear]
 
-cost(build::VariableExpansion, invyear::Int=1) =
+cost(build::VariableExpansion, invyear::Int) =
     nameplatecapacity(build, invyear) * build.params.cost_capital[invyear]
 
 VariableExistingParams(build::VariableExpansion) = VariableExistingParams(

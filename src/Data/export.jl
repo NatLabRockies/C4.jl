@@ -182,7 +182,7 @@ function store(
         DuckDB.append(appender.tech_costs, tech.name)
         DuckDB.append(appender.tech_costs, year)
         DuckDB.append(appender.tech_costs, cost_startup(tech, y) / powerunits_MW)
-        DuckDB.append(appender.tech_costs, cost_generation(tech) / powerunits_MW)
+        DuckDB.append(appender.tech_costs, cost_generation(tech, y) / powerunits_MW)
         DuckDB.append(appender.tech_costs, tech.cost_capital[y] / powerunits_MW)
         DuckDB.append(appender.tech_costs, nothing)
         DuckDB.end_row(appender.tech_costs)

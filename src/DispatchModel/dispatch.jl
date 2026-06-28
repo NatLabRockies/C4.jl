@@ -1,3 +1,4 @@
+
 struct ThermalDispatch{G<:DispatchableThermalTech}
 
     dispatch::Vector{JuMP.VariableRef}
@@ -101,9 +102,9 @@ struct ThermalDispatch{G<:DispatchableThermalTech}
 
 end
 
-cost(dispatch::ThermalDispatch) =
-    cost_startup(dispatch.tech) * sum(dispatch.units_startup, init=0) +
-    cost_generation(dispatch.tech) * sum(dispatch.dispatch)
+cost(dispatch::ThermalDispatch, i::Int) =
+    cost_startup(dispatch.tech, i) * sum(dispatch.units_startup, init=0) +
+    cost_generation(dispatch.tech, i) * sum(dispatch.dispatch)
 
 co2(dispatch::ThermalDispatch) =
     co2_startup(dispatch.tech) * sum(dispatch.units_startup, init=0) +
@@ -189,8 +190,8 @@ name(dispatch::StorageDispatch) =
 usage(dispatch::StorageDispatch) =
     sum(dispatch.charge) + sum(dispatch.discharge)
 
-cost(dispatch::StorageDispatch) =
-    usage(dispatch) * operating_cost(dispatch.stor)
+cost(dispatch::StorageDispatch, i::Int) =
+    usage(dispatch) * operating_cost(dispatch.stor, i)
 
 struct VariableDispatch{V<:DispatchableVariableTech}
 
@@ -218,8 +219,8 @@ struct VariableDispatch{V<:DispatchableVariableTech}
 
 end
 
-cost(dispatch::VariableDispatch) =
-    sum(dispatch.dispatch) * cost_generation(dispatch.tech)
+cost(dispatch::VariableDispatch, i::Int) =
+    sum(dispatch.dispatch) * cost_generation(dispatch.tech, i)
 
 name(dispatch::VariableDispatch) = name(dispatch.tech)
 
@@ -227,6 +228,7 @@ name(dispatch::VariableDispatch) = name(dispatch.tech)
 struct SystemDispatch{S<:DispatchableSystem}
 
     period::DispatchDay
+    invyear::Int
 
     thermaltechs::Vector{ThermalDispatch}
     variabletechs::Vector{VariableDispatch}
@@ -264,7 +266,7 @@ struct SystemDispatch{S<:DispatchableSystem}
                 + sum(stor.dispatch[h] for stor in storagedispatch)
                 + (isnan(voll) ? 0 : unserved_energy[h]))
 
-        new{S}(period, thermaldispatch, variabledispatch, storagedispatch,
+        new{S}(period, invyear, thermaldispatch, variabledispatch, storagedispatch,
                unserved_energy, voll, powerbalance, system)
 
     end
@@ -275,11 +277,23 @@ name(dispatch::SystemDispatch) = name(dispatch.system)
 
 demand(dispatch::SystemDispatch, t::Int) = demand(dispatch.system, t)
 
-cost(dispatch::SystemDispatch) =
-    sum(cost(thermaltech) for thermaltech in dispatch.thermaltechs; init=0) +
-    sum(cost(variabletech) for variabletech in dispatch.variabletechs; init=0) +
-    sum(cost(storagetech) for storagetech in dispatch.storagetechs; init=0) +
-    (isnan(dispatch.voll) ? 0 : sum(dispatch.unserved_energy) * (dispatch.voll * powerunits_MW))
+function cost(dispatch::SystemDispatch)
+
+    cost_thermal = sum(cost(thermaltech, dispatch.invyear)
+                       for thermaltech in dispatch.thermaltechs; init=0)
+
+    cost_variable = sum(cost(variabletech, dispatch.invyear)
+                        for variabletech in dispatch.variabletechs; init=0)
+
+    cost_storage = sum(cost(storagetech, dispatch.invyear)
+                       for storagetech in dispatch.storagetechs; init=0)
+
+    cost_shortfall = isnan(dispatch.voll) ? 0 :
+        sum(dispatch.unserved_energy) * (dispatch.voll * powerunits_MW)
+
+    return cost_thermal + cost_variable + cost_storage + cost_shortfall
+
+end
 
 co2(dispatch::SystemDispatch) =
     sum(co2(thermaltech) for thermaltech in dispatch.thermaltechs; init=0)

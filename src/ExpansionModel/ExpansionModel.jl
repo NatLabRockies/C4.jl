@@ -49,15 +49,15 @@ mutable struct ExpansionProblem
     # Store one DispatchSequence per investment year
     dispatches::Vector{DispatchSequence{SystemExpansion}} # n_investment_years
 
-    reliabilityconstraints::ReliabilityConstraints
+    reliabilityconstraints::Vector{ReliabilityConstraints}
 
     function ExpansionProblem(
         system::SystemParams,
         chronologies::Vector{DispatchProxyMapping},
-        riskparams::Vector{EUECuttingPlaneParams},
-        eue_max::Float64, # in powerunits_MWh
+        riskparams::Vector{Vector{EUECuttingPlaneParams}},
+        eue_max::Vector{Float64}, # in powerunits_MWh
         optimizer;
-        co2_max::Float64=NaN, # in annual tonnes CO2
+        co2_max::Vector{Float64}=Float64[], # in annual tonnes CO2
         co2_offset_price::Float64=NaN, # $/tonne CO2
         unit_commitment::Bool=true,
         discount_rate::Float64=0.
@@ -68,10 +68,22 @@ mutable struct ExpansionProblem
             error("Nummber of time period dispatch proxy assignments does not match " *
                   "number of system investment years")
 
+       length(eue_max) == n_years_investment ||
+            error("Nummber of EUE caps provided does not match " *
+                  "number of system investment years")
+
+       iszero(length(co2_max)) || length(co2_max) == n_years_investment ||
+            error("Nummber of emissions intensity caps provided does not match " *
+                  "number of system investment years")
+
         n_hours_full = n_dispatch_hours(system.times)
         all(c -> n_represented_hours(c) == n_hours_full, chronologies) ||
             error("A time period dispatch proxy assignment is incompatible " *
                   "with the number of system dispatch timesteps")
+
+        if iszero(length(co2_max))
+            co2_max = fill(NaN, n_years_investment)
+        end
 
         m = JuMP.direct_model(optimizer)
 
@@ -79,12 +91,14 @@ mutable struct ExpansionProblem
 
         dispatches = [
             DispatchSequence(m, builds, i, chronology,
-                             co2_max=co2_max, co2_offset_price=co2_offset_price,
+                             co2_max=co2_max[i],
+                             co2_offset_price=co2_offset_price,
                              unit_commitment=unit_commitment)
-        for (i, chronology) in enumerate(chronologies)]
+            for (i, chronology) in enumerate(chronologies)]
 
-        reliabilityconstraints = ReliabilityConstraints(
-            m, builds, riskparams, eue_max)
+        reliabilityconstraints = [
+            ReliabilityConstraints(m, builds, i, riskparams[i], eue_max[i])
+            for i in eachindex(chronologies)]
 
         @objective(m, Min,
             npv(cost, builds, system.times, discount_rate) +
@@ -103,22 +117,15 @@ function SystemParams(prob::ExpansionProblem)
     build = prob.builds
 
     thermal_existing = vcat(
-            [ThermalExistingParams(tech)
-             for tech in build.thermaltechs
-             if value(nameplatecapacity(tech)) > 0],
+            ThermalExistingParams.(build.thermaltechs),
             params.thermaltechs_existing)
 
     variable_existing = vcat(
-            [VariableExistingParams(tech)
-             for tech in build.variabletechs
-             if value(nameplatecapacity(tech)) > 0],
+            VariableExistingParams.(build.variabletechs),
             params.variabletechs_existing)
 
-    # We leave in all storage resources (whether built or not)
-    # in order to simplify extracting marginal EUE reductions from
-    # PRAS results later
     storage_existing = vcat(
-            [StorageExistingParams(tech) for tech in build.storagetechs],
+            StorageExistingParams.(build.storagetechs),
             params.storagetechs_existing)
 
     return SystemParams(

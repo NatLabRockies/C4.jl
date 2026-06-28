@@ -7,7 +7,7 @@ struct VariableExistingSiteParams <: DispatchableVariableSite
 
 end
 
-nameplatecapacity(site::VariableExistingSiteParams, invyear::Int=1) =
+nameplatecapacity(site::VariableExistingSiteParams, invyear::Int) =
     site.capacity[invyear]
 
 availability(site::VariableExistingSiteParams, invyear::Int, day::Int, hour::Int) =
@@ -27,7 +27,7 @@ end
 tech(::Type{VariableExistingSiteParams}) = VariableExistingParams
 
 sites(tech::VariableExistingParams) = tech.sites
-cost_generation(tech::VariableExistingParams, invyear::Int=1) = tech.cost_vom[invyear]
+cost_generation(tech::VariableExistingParams, invyear::Int) = tech.cost_vom[invyear]
 name(tech::VariableExistingParams) = tech.name
 
 struct VariableCandidateSiteParams

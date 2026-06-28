@@ -26,15 +26,15 @@ struct StorageExpansion <: DispatchableStorageTech
 
 end
 
-maxpower(tech::StorageExpansion, i::Int=1) = sum(tech.power_new[1:i])
+maxpower(tech::StorageExpansion, i::Int) = sum(tech.power_new[1:i])
 
-maxenergy(tech::StorageExpansion, i::Int=1) = sum(tech.energy_new[1:i])
+maxenergy(tech::StorageExpansion, i::Int) = sum(tech.energy_new[1:i])
 
-cost(tech::StorageExpansion, i::Int=1) =
+cost(tech::StorageExpansion, i::Int) =
     tech.power_new[i] * tech.params.cost_capital_power[i] +
     tech.energy_new[i] * tech.params.cost_capital_energy[i]
 
-operating_cost(tech::StorageExpansion, i::Int=1) =
+operating_cost(tech::StorageExpansion, i::Int) =
     tech.params.cost_vom[i]
 
 roundtrip_efficiency(tech::StorageExpansion) =
@@ -58,8 +58,7 @@ function StorageExistingParams(tech::StorageExpansion)
     return StorageExistingParams(
         params.name,
         params.category,
-        new_duration[1], # TODO: need a single duration for the tech,
-                         #       but can size each year independently here...
+        new_duration,
         params.roundtrip_efficiency,
         params.cost_vom,
         [StorageExistingSiteParams(tech.params.name * " built", new_power)]
