@@ -208,7 +208,7 @@ function add_stressperiod(
 
     year, dayofyear = year_dayofyear(new_day_idx, sys.times)
     name = "Y$year D$dayofyear"
-    new_day = DispatchDay(name, new_day_idx, times)
+    new_day = DispatchDay(name, new_day_idx, sys.times)
     println("Adding period: $name")
 
     new_days = [times.days; new_day]

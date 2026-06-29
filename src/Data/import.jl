@@ -445,7 +445,7 @@ function load_existing_storagesites!(system::SystemParams, datadir::String)
 
         _, tech = get_entity(system, StorageExistingParams, techname)
 
-        capcity = defaultinvestmentdata(system.times, 0)
+capacity = defaultinvestmentdata(system.times, 0)
 
         site = StorageExistingSiteParams(sitename, capacity)
 
