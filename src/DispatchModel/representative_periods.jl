@@ -69,11 +69,11 @@ daytoweek(d::Int) = string(div(d, 7) % 52 + 1)
 function daytoseason(d::Int)
     if d <= 60 || d > 335
         "Winter"
-    elseif m <= 152
+    elseif d <= 152
         "Spring"
-    elseif m <= 244
+    elseif d <= 244
         "Summer"
-    elseif m <= 335
+    elseif d <= 335
         "Fall"
     end
 end

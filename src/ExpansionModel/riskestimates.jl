@@ -7,7 +7,7 @@ struct ThermalEUEReduction
         build::ThermalExpansion, gen_dEUEs::Matrix{Float64}, i::Int)
 
         n_days = size(gen_dEUEs, 2)
-        dEUE = -sum(gen_dEUEs[h, d] * availability(build.params, 1, d, h)
+        dEUE = -sum(gen_dEUEs[h, d] * availability(build.params, i, d, h)
                     for h in 1:N_HOURS_IN_DAY, d in 1:n_days)
 
         nameplate = value(nameplatecapacity(build, i))
@@ -30,7 +30,7 @@ struct VariableSiteEUEReduction
         build::VariableSiteExpansion, gen_dEUEs::Matrix{Float64}, i::Int)
 
         n_days = size(gen_dEUEs, 2)
-        dEUE = -sum(gen_dEUEs[h, d] * availability(build, 1, d, h)
+        dEUE = -sum(gen_dEUEs[h, d] * availability(build, i, d, h)
                     for h in 1:N_HOURS_IN_DAY, d in 1:n_days)
 
         nameplate = value(nameplatecapacity(build, i))
