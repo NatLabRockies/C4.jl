@@ -17,7 +17,6 @@ import HiGHS
 import JuMP: optimizer_with_attributes, value, termination_status, write_to_file
 
 include("DispatchModel/sequencing.jl")
-include("AdequacySimulation.jl")
 include("DispatchModel/thermal.jl")
 
 optimizer = optimizer_with_attributes(
@@ -54,7 +53,7 @@ max_eues = [
 # For iterate_ra_cem, which takes NEUE
 max_neue = 10.
 
-ram = AdequacyProblem(sys, samples=1000)
+ram = AdequacyProblem(sys, optimizer, samples=1000)
 ram_results = solve(ram)
 println("\nBase NEUEs = ", neues(ram_results))
 
@@ -70,7 +69,7 @@ sys_built = SystemParams(cem)
 display(sys_built)
 println("System Cost: ", value(cost(cem)))
 
-ram = AdequacyProblem(sys_built, samples=1000)
+ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram) # Dig into these results
 println("\nNEUEs = ", neues(ram_results))
 
@@ -84,7 +83,7 @@ sys_built = SystemParams(cem)
 display(sys_built)
 println("System Cost: ", value(cost(cem)))
 
-ram = AdequacyProblem(sys_built, samples=1000)
+ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram)
 println("\nNEUEs = ", neues(ram_results))
 
@@ -100,7 +99,7 @@ sys_built = SystemParams(cem)
 display(sys_built)
 println("System Cost: ", value(cost(cem)))
 
-ram = AdequacyProblem(sys_built, samples=1000)
+ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram)
 println("\nNEUEs = ", neues(ram_results))
 
@@ -134,7 +133,7 @@ println("System Cost: ", value(cost(cem)))
 println("System LCOE: ", value(lcoe(cem)))
 println("System Emissions Intensity: ", value(emissions_intensity(cem)))
 
-ram = AdequacyProblem(sys_built, samples=100_000)
+ram = AdequacyProblem(sys_built, optimizer, samples=100_000)
 ram_results = solve(ram)
 println("\nNEUEs = ", neues(ram_results))
 
