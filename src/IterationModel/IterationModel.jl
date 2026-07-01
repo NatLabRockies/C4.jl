@@ -31,7 +31,7 @@ function iterate_ra_cem(
     max_eue = max_neue * neue_factor
 
     ram_start = now()
-    ram = AdequacyProblem(sys, samples=nsamples)
+    ram = AdequacyProblem(sys, optimizer, samples=nsamples)
     ram_result = solve(ram)
     ram_end = now()
 
@@ -93,7 +93,7 @@ function iterate_ra_cem(
 
         ram_start = now()
         sys_built = SystemParams(cem)
-        ram = AdequacyProblem(sys_built, samples=nsamples)
+        ram = AdequacyProblem(sys_built, optimizer, samples=nsamples)
         ram_result = solve(ram)
         ram_end = now()
 

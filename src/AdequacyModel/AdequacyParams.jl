@@ -1,25 +1,48 @@
-struct AdequacyProblem
+struct StorageParams
+    charge_eff::Float64
+    discharge_eff::Float64
+    power_capacity::Float64
+    energy_capacity::Float64
+end
 
-    sys::SystemParams
-    params::AdequacyParams
-    storage_permutation::Vector{Int}
-    samples::Int
+struct AdequacyParams
 
-    function AdequacyProblem(sys::SystemParams; samples::Int)
+    n_timesteps::Int
+    n_generators::Int
+    n_storages::Int
 
-        demand = sys.demand .* powerunits_MW
+    demand::Vector{Float64} # n_timesteps
 
-        generators_capacity, generators_lambda, generators_mu =
-            load_generators(sys)
+    # Note this index ordering is deliberately inconsistent,
+    # for better contiguous memory access
+    generators_capacity::Matrix{Float64} # n_generators x n_timesteps
+    generators_lambda::Matrix{Float64} # n_timesteps x n_generators
+    generators_mu::Matrix{Float64} # n_timesteps x n_generators
 
-        storages, storage_perm = load_storages(sys)
+    # Note: Provided storages MUST be pre-sorted by round-trip efficiency
+    storages::Vector{StorageParams} # n_storages
 
-        params = AdequacyParams(
-            demand,
-            generators_capacity, generators_lambda, generators_mu,
-            storages)
+    function AdequacyParams(
+        demand::Vector{Float64},
+        generators_capacity::Matrix{Float64},
+        generators_lambda::Matrix{Float64},
+        generators_mu::Matrix{Float64},
+        storages::Vector{StorageParams})
 
-        return new(sys, params, storage_perm, samples)
+        n_timesteps = length(demand)
+        n_generators = size(generators_capacity, 1)
+        n_storages = length(storages)
+
+        size(generators_capacity, 2) == n_timesteps || error("Inconsistent number of timesteps")
+
+        size(generators_lambda, 1) == n_timesteps || error("Inconsistent number of timesteps")
+        size(generators_lambda, 2) == n_generators || error("Inconsistent number of generators")
+
+        size(generators_mu, 1) == n_timesteps || error("Inconsistent number of timesteps")
+        size(generators_mu, 2) == n_generators || error("Inconsistent number of generators")
+
+        new(n_timesteps, n_generators, n_storages, demand,
+            generators_capacity, generators_lambda, generators_mu, storages)
 
     end
 
@@ -99,50 +122,17 @@ function load_storages(sys::SystemParams)
     storages = Vector{StorageParams}(undef, n_storages)
     s_last = 0
 
-    stor_perm = sortperm(
-        sys.storagetechs_existing, by=(x -> x.roundtrip_efficiency), rev=true)
-
-    for (s_idx, s) in enumerate(stor_perm)
+    for s in 1:n_storages
 
         stor = sys.storagetechs_existing[s]
         oneway_eff = sqrt(stor.roundtrip_efficiency)
 
-        storages[s_idx] = StorageParams(
+        storages[s] = StorageParams(
             oneway_eff, oneway_eff,
             maxpower(stor) * powerunits_MW, maxenergy(stor) * powerunits_MW)
 
     end
 
-    return storages, stor_perm
+    return storages
 
 end
-
-struct AdequacyResult
-
-    timestamps::StepRange{DateTime,Hour}
-
-    demand::Vector{Float64}
-    lolps::Vector{Float64}
-    eues::Vector{Float64}
-
-    generation_dEUEs::Vector{Float64} # n_timesteps
-    storage_power_dEUEs::Vector{Float64} # n_storages
-    storage_energy_dEUEs::Vector{Float64} # n_storages
-
-end
-
-function solve(prob::AdequacyProblem)
-
-    result = solve(prob.params, samples=prob.samples)
-
-    ip = invperm(prob.storage_permutation)
-    stor_power_dEUE = sum(result.storage_power_dEUEs, dims=1)[ip]
-    stor_energy_dEUE = sum(result.storage_energy_dEUEs, dims=1)[ip]
-
-    return AdequacyResult(
-        prob.sys.timesteps, result.demand, result.lolps, result.eues,
-        result.generation_dEUEs, stor_power_dEUE, stor_energy_dEUE)
-
-end
-
-neue(res::AdequacyResult) = sum(res.eues) / sum(res.demand) * 1_000_000

@@ -15,7 +15,6 @@ import HiGHS
 import JuMP: optimizer_with_attributes, value, termination_status, write_to_file
 
 include("DispatchModel/sequencing.jl")
-include("AdequacySimulation.jl")
 
 optimizer = optimizer_with_attributes(
     HiGHS.Optimizer,
@@ -45,7 +44,7 @@ max_eue = total_demand(sys) / 10_000 # 100 ppm
 # For iterate_ra_cem, which takes NEUE
 max_neue = 10.
 
-ram = AdequacyProblem(sys, samples=1000)
+ram = AdequacyProblem(sys, optimizer, samples=1000)
 ram_results = solve(ram)
 println("\nBase NEUE = ", neue(ram_results))
 println("LOLPs: ", ram_results.lolps)
@@ -63,7 +62,7 @@ sys_built = SystemParams(cem)
 display(sys_built)
 println("System Cost: ", value(cost(cem)))
 
-ram = AdequacyProblem(sys_built, samples=1000)
+ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram) # Dig into these results
 println("\nNEUE = ", neue(ram_results))
 println("LOLPs: ", ram_results.lolps)
@@ -79,7 +78,7 @@ sys_built = SystemParams(cem)
 display(sys_built)
 println("System Cost: ", value(cost(cem)))
 
-ram = AdequacyProblem(sys_built, samples=1000)
+ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram)
 println("\nNEUE = ", neue(ram_results))
 println("LOLPs: ", ram_results.lolps)
@@ -95,7 +94,7 @@ sys_built = SystemParams(cem)
 display(sys_built)
 println("System Cost: ", value(cost(cem)))
 
-ram = AdequacyProblem(sys_built, samples=1000)
+ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram)
 println("\nNEUE = ", neue(ram_results))
 println("LOLPs: ", ram_results.lolps)
