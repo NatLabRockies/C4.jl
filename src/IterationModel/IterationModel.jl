@@ -16,6 +16,7 @@ import JuMP: value
 
 export iterate_ra_cem
 
+
 function iterate_ra_cem(
     sys::SystemParams, base_chronologies::Vector{DispatchProxyMapping},
     max_neue::Float64, optimizer; neue_tol::Float64=.001,
@@ -25,7 +26,7 @@ function iterate_ra_cem(
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
     check_dispatch::Bool=false, check_dispatch_voll::Real=NaN,
-    unit_commitment::Bool=true)
+    unit_commitment::Bool=true, discount_rate::Float64=0.)
 
     persist = length(outfile) > 0
     timeout += time()
@@ -83,7 +84,8 @@ function iterate_ra_cem(
         cem = ExpansionProblem(sys, chronologies, eue_estimator, max_eues,
                                optimizer,
                                co2_max=max_co2s, co2_offset_price=co2_offset_price,
-                               unit_commitment=unit_commitment)
+                               unit_commitment=unit_commitment,
+                               discount_rate=discount_rate)
 
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
