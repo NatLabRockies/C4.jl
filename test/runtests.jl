@@ -132,11 +132,13 @@ pcm = DispatchProblem(sys_built, 1, first(repeatedchrono), optimizer,
                       unit_commitment=true)
 solve!(pcm)
 println("2030 Operating Cost: ", value(cost(pcm)))
-println("2030 Carbon Offset Cost: ", value(co2_offset_cost(pcm)))
+println("2030 Carbon Offset Cost (included in opex): ", value(co2_offset_cost(pcm)))
+println("CEM 2030 Opex: ", value(cost(cem.dispatches[1])))
 
 pcm = DispatchProblem(sys_built, 2, last(repeatedchrono), optimizer,
                       voll=voll, co2_max_intensity=50., co2_offset_price=100.,
                       unit_commitment=true)
 solve!(pcm)
 println("2050 Operating Cost: ", value(cost(pcm)))
-println("2050 Carbon Offset Cost: ", value(co2_offset_cost(pcm)))
+println("2050 Carbon Offset Cost (included in opex): ", value(co2_offset_cost(pcm)))
+println("CEM 2050 Opex: ", value(cost(cem.dispatches[2])))

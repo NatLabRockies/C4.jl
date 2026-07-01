@@ -15,7 +15,7 @@ n_datapoints(tidxs::TimeIndices) = n_investment_years(tidxs) * n_dispatch_hours(
 dayidx(dispatch_year::Int, dispatch_dayofyear::Int, tidxs::TimeIndices) =
     sum(tidxs.dispatch_daycount[1:(dispatch_year-1)], init=0) + dispatch_dayofyear
 
-annualization_factor(times::TimeIndices) = 8766 / n_dispatch_days(times)
+annualization_factor(times::TimeIndices) = 8766 / n_dispatch_hours(times)
 
 function year_dayofyear(day_idx::Int, tidxs::TimeIndices)
 
