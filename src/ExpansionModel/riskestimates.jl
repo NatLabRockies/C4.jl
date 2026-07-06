@@ -85,8 +85,8 @@ struct StorageEUEReduction
 end
 
 eue_adjustment(riskparams::StorageEUEReduction, build::StorageExpansion, i::Int) =
-        riskparams.dEUE_power * (build.power_new[i] - riskparams.nameplate_power) +
-        riskparams.dEUE_energy * (build.energy_new[i] - riskparams.nameplate_energy)
+        riskparams.dEUE_power * (maxpower(build, i) - riskparams.nameplate_power) +
+        riskparams.dEUE_energy * (maxenergy(build, i) - riskparams.nameplate_energy)
 
 struct EUECuttingPlaneParams
 

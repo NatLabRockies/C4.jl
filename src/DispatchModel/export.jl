@@ -88,14 +88,24 @@ function store(con::DBInterface.Connection, iter::Int, i::Int, seq::DispatchSequ
         FROM dispatches GROUP BY iteration, year, period, tech
     ")
 
+    DBInterface.execute(con, "CREATE VIEW IF NOT EXISTS summary_generation_abs AS
+        SELECT iteration, year, period, tech, sum(abs(dispatch)) AS generation
+        FROM dispatches GROUP BY iteration, year, period, tech
+    ")
+
     DBInterface.execute(con, "CREATE VIEW IF NOT EXISTS summary_generation_scaled AS
         SELECT iteration, year, period, tech, generation*reps AS generation
         FROM summary_generation JOIN periods USING (iteration, year, period);
     ")
 
+    DBInterface.execute(con, "CREATE VIEW IF NOT EXISTS summary_generation_scaled_abs AS
+        SELECT iteration, year, period, tech, generation*reps AS generation
+        FROM summary_generation_abs JOIN periods USING (iteration, year, period);
+    ")
+
     DBInterface.execute(con, "CREATE VIEW IF NOT EXISTS summary_opex AS
         SELECT iteration, year, period, tech, cost_generation * generation AS opex
-        FROM summary_generation_scaled
+        FROM summary_generation_scaled_abs
         JOIN techs USING (tech)
         JOIN tech_costs using (year, tech);
     ")
