@@ -59,6 +59,7 @@ mutable struct ExpansionProblem
         optimizer;
         co2_max::Vector{Float64}=Float64[], # in annual tonnes CO2
         co2_offset_price::Float64=NaN, # $/tonne CO2
+        cem_voll::Float64=NaN, # $/MWh, NaN = hard power balance (no slack)
         unit_commitment::Bool=true,
         discount_rate::Float64=0.,
         npv_year::Int=Int(first(system.times.investment_years))
@@ -92,6 +93,7 @@ mutable struct ExpansionProblem
 
         dispatches = [
             DispatchSequence(m, builds, i, chronology,
+                             voll=cem_voll,
                              co2_max=co2_max[i],
                              co2_offset_price=co2_offset_price,
                              unit_commitment=unit_commitment)
@@ -147,8 +149,11 @@ function solve!(prob::ExpansionProblem)
 
     JuMP.optimize!(prob.model)
 
-    JuMP.termination_status(prob.model) == JuMP.OPTIMAL ||
-        @error "Problem did not solve to optimality"
+    status = JuMP.termination_status(prob.model)
+    status == JuMP.OPTIMAL ||
+        error("CEM did not solve to optimality (status: $status). " *
+              "Primal status: $(JuMP.primal_status(prob.model)), " *
+              "Dual status: $(JuMP.dual_status(prob.model))")
 
 end
 
