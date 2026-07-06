@@ -12,7 +12,7 @@ import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
         ..nameplatecapacity, ..availablecapacity, ..availability, ..maxpower, ..maxenergy,
         ..roundtrip_efficiency, ..operating_cost,
         ..name, ..variabletechs, ..storagetechs, ..thermaltechs,
-        ..sites, ..cost, ..co2,
+        ..sites, ..cost, ..cost_fom, ..co2,
         ..cost_generation, ..cost_startup, ..co2_generation, ..co2_startup,
         ..max_unit_ramp, ..num_units, ..unit_size, ..min_gen,
         ..min_uptime, ..min_downtime,
@@ -60,7 +60,8 @@ mutable struct ExpansionProblem
         co2_max::Vector{Float64}=Float64[], # in annual tonnes CO2
         co2_offset_price::Float64=NaN, # $/tonne CO2
         unit_commitment::Bool=true,
-        discount_rate::Float64=0.
+        discount_rate::Float64=0.,
+        npv_year::Int=Int(first(system.times.investment_years))
     )
 
        n_years_investment = n_investment_years(system.times)
@@ -101,9 +102,10 @@ mutable struct ExpansionProblem
             for i in eachindex(chronologies)]
 
         @objective(m, Min,
-            npv(cost, builds, system.times, discount_rate) +
-            annualization_factor(system.times) *
-                npv(cost, dispatches, system.times, discount_rate))
+            npv_capex(cost_capex, builds, system.times, discount_rate, npv_year) +
+            npv_opex(cost, dispatches, system.times, discount_rate, npv_year) +
+            npv_opex(cost_fom, builds, system.times, discount_rate, npv_year)
+            )
 
         return new(m, system, builds, dispatches, reliabilityconstraints)
 
@@ -153,19 +155,18 @@ end
 # TODO: Is it more useful to report these outcomes (especially relative ones
 # like carbon intensity and LCOE) by investment year, rather than in aggregate?
 
-# Capex is annualized, so scale opex to approximate an annual cost
 # Note that opex includes any carbon offset costs
-opex(prob::ExpansionProblem; discount_rate::Float64=0.) =
-    annualization_factor(prob.system.times) *
-    npv(cost, prob.dispatches, prob.system.times, discount_rate)
+opex(prob::ExpansionProblem; discount_rate::Float64=0., npv_year::Int=2025) =
+    npv_opex(cost, prob.dispatches, prob.system.times, discount_rate, npv_year) +
+    # npv_opex(cost_fom, prob.system, prob.system.times, discount_rate, npv_year) +
+    npv_opex(cost_fom, prob.builds, prob.system.times, discount_rate, npv_year)
 
-capex(prob::ExpansionProblem; discount_rate::Float64=0.) =
-    npv(cost, prob.builds, prob.system.times, discount_rate)
+capex(prob::ExpansionProblem; discount_rate::Float64=0., npv_year::Int=2025) =
+    npv_capex(cost_capex, prob.builds, prob.system.times, discount_rate, npv_year)
 
 # Capex is annualized, so scale carbon offset cost to approximate an annual cost
-co2_offset_cost(prob::ExpansionProblem; discount_rate::Float64=0.) =
-    annualization_factor(prob.system.times) *
-    npv(co2_offset_cost, prob.dispatches, prob.system.times, discount_rate)
+co2_offset_cost(prob::ExpansionProblem; discount_rate::Float64=0., npv_year::Int=2025) =
+    npv_opex(co2_offset_cost, prob.dispatches, prob.system.times, discount_rate, npv_year)
 
 cost(prob::ExpansionProblem) = capex(prob) + opex(prob)
 
@@ -173,14 +174,13 @@ cost(prob::ExpansionProblem) = capex(prob) + opex(prob)
 CO2 emissions in annualized tonnes
 """
 co2(prob::ExpansionProblem) =
-    annualization_factor(prob.system.times) *
-        npv(co2, prob.dispatches, prob.system.times, 0.0)
+        npv_opex(co2, prob.dispatches, prob.system.times, 0.0, 2025)
 
 function lcoe(prob::ExpansionProblem)
 
     # Note: total demand used here is the full-chronology demand annualized,
     #       not necessarily what economic dispatch sees
-    demand = npv(total_demand, prob.system, prob.system.times, 0.0) *
+    demand = npv_opex(total_demand, prob.system, prob.system.times, 0.0, 2025) *
                     powerunits_MW * annualization_factor(prob.system.times)
 
     return cost(prob) / demand
@@ -194,7 +194,7 @@ function emissions_intensity(prob::ExpansionProblem)
 
     # Note: total demand used here is the full-chronology demand annualized,
     #       not necessarily what economic dispatch sees
-    demand = npv(total_demand, prob.system, prob.system.times, 0.0) *
+    demand = npv_opex(total_demand, prob.system, prob.system.times, 0.0, 2025) *
                     powerunits_MW * annualization_factor(prob.system.times)
 
     # Convert CO2 from tonnes to kg

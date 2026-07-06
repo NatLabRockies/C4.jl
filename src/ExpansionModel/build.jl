@@ -42,11 +42,15 @@ demand(system::SystemExpansion, i::Int, d::Int, h::Int) =
 
 # Annualized costs in i-th investment period include annualized costs resulting
 # from all earlier investments
-cost(build::SystemExpansion, invyear::Int) = sum(
-    sum(cost(thermaltech, i) for thermaltech in build.thermaltechs; init=0) +
-    sum(cost(variabletech, i) for variabletech in build.variabletechs; init=0) +
-    sum(cost(storagetech, i) for storagetech in build.storagetechs; init=0)
-for i in 1:invyear)
+cost_capex(build::SystemExpansion, i::Int) =
+    sum(cost_capex(thermaltech, i) for thermaltech in build.thermaltechs; init=0) +
+    sum(cost_capex(variabletech, i) for variabletech in build.variabletechs; init=0) +
+    sum(cost_capex(storagetech, i) for storagetech in build.storagetechs; init=0)
+
+cost_fom(build::SystemExpansion, i::Int) =
+    sum(cost_fom(thermaltech, i) for thermaltech in build.thermaltechs; init=0) +
+    sum(cost_fom(variabletech, i) for variabletech in build.variabletechs; init=0) +
+    sum(cost_fom(storagetech, i) for storagetech in build.storagetechs; init=0)
 
 thermaltechs(system::SystemExpansion) =
     [system.thermaltechs; system.params.thermaltechs_existing]

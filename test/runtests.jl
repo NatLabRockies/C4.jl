@@ -23,7 +23,7 @@ optimizer = optimizer_with_attributes(
     "log_to_console" => false,
 )
 
-sys = SystemParams("Data/toysystem")
+sys = SystemParams("Data/toysystem", opex_endyears=10)
 display(sys)
 
 timestamp = Dates.format(now(), "yyyymmddHHMMSS")

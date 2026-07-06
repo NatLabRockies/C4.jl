@@ -19,6 +19,7 @@ struct VariableExistingParams <: DispatchableVariableTech
     category::String
 
     cost_vom::InvestmentDataArray{Float64} # $/MWh
+    cost_fom::InvestmentDataArray{Float64} # $/MWh
 
     sites::Vector{VariableExistingSiteParams}
 
@@ -48,6 +49,7 @@ struct VariableCandidateParams
 
     cost_capital::InvestmentDataArray{Float64} # annualized $/MW
     cost_vom::InvestmentDataArray{Float64} # $/MWh
+    cost_fom::InvestmentDataArray{Float64} # $/MWh
 
     sites::Vector{VariableCandidateSiteParams}
 

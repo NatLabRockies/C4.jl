@@ -28,8 +28,11 @@ ratedcapacity(tech::ThermalExpansion, invyear::Int, day::Int, hour::Int) =
 expectedcapacity(tech::ThermalExpansion, invyear::Int, day::Int, hour::Int) =
     ratedcapacity(tech, invyear) * availability(tech.params, invyear, day, hour)
 
-cost(build::ThermalExpansion, invyear::Int) =
+cost_capex(build::ThermalExpansion, invyear::Int) =
     build.units_new[invyear] * build.params.unit_size * build.params.cost_capital[invyear]
+
+cost_fom(build::ThermalExpansion, invyear::Int) =
+    nameplatecapacity(build, invyear) * build.params.cost_fom[invyear]
 
 cost_startup(build::ThermalExpansion, invyear::Int) =
     cost_startup(build.params, invyear)
@@ -66,6 +69,7 @@ function ThermalExistingParams(tech::ThermalExpansion)
         params.heat_rate,
         params.startup_heat,
         params.cost_vom,
+        params.cost_fom,
         params.unit_size,
         params.rating,
         params.min_gen,
@@ -87,6 +91,7 @@ function ThermalCandidateParams(tech::ThermalExpansion)
         params.heat_rate,
         params.startup_heat,
         params.cost_vom,
+        params.cost_fom,
         params.cost_capital,
         params.max_units .- round.(Int, value.(tech.units_new)),
         params.unit_size,

@@ -12,6 +12,8 @@ struct StorageExistingParams <: DispatchableStorageTech
     roundtrip_efficiency::Float64
 
     cost_vom::InvestmentDataArray{Float64} # $/MWh
+    cost_fom_power::InvestmentDataArray{Float64} # $/MWh
+    cost_fom_energy::InvestmentDataArray{Float64} # $/MWh
 
     sites::Vector{StorageExistingSiteParams}
 
@@ -36,6 +38,8 @@ struct StorageCandidateParams
     roundtrip_efficiency::Float64
 
     cost_vom::InvestmentDataArray{Float64} # $/MWh
+    cost_fom_power::InvestmentDataArray{Float64} # $/MWh
+    cost_fom_energy::InvestmentDataArray{Float64} # $/MWh
     cost_capital_power::InvestmentDataArray{Float64} # annualized $/MW
     cost_capital_energy::InvestmentDataArray{Float64} # annualized $/MWh
 

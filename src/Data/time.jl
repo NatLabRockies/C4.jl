@@ -1,9 +1,9 @@
 const InvestmentYear = Int16
 
 struct TimeIndices
-    base_year::InvestmentYear
     investment_years::Vector{InvestmentYear}
-    dispatch_daycount::Vector{Int} # day count for each weather year
+    dispatch_daycount::Vector{Int} # day count for each dispatch year
+    last_operating_year::InvestmentYear
 end
 
 n_investment_years(tidxs::TimeIndices) = length(tidxs.investment_years)
@@ -33,6 +33,27 @@ function year_dayofyear(day_idx::Int, tidxs::TimeIndices)
 
 end
 
+function opex_years(times::TimeIndices)
+
+    n_invyears = n_investment_years(times)
+
+    result = Vector{Tuple{Int,Int}}(undef, n_invyears)
+
+    for i in 1:(n_invyears-1)
+
+        result[i] = (
+            times.investment_years[i],
+            times.investment_years[i+1]-1
+        )
+
+    end
+
+    result[end] = (times.investment_years[end], times.last_operating_year)
+
+    return result
+
+end
+
 days(times::TimeIndices) = (
     (year, dayofyear)
         for year in eachindex(times.dispatch_daycount)
@@ -40,23 +61,33 @@ days(times::TimeIndices) = (
 )
 
 
-function npv(
-    f::Function, x::T, times::TimeIndices, discount_rate::Float64
+function npv_capex(
+    f::Function, x::T, times::TimeIndices,
+    discount_rate::Float64, npv_year::Int
 ) where T
 
     result = 0
-    prev_year = times.base_year
-    discount = 1.0
 
-    for (i, year) in enumerate(times.investment_years)
+    for (i, inv_year) in enumerate(times.investment_years)
+        scaling_factor = (1 - discount_rate)^(inv_year - npv_year)
+        result += scaling_factor * f(x, i)
+    end
 
-        scaling_factor = 0.
+    return result
 
-        while prev_year < year
-            prev_year += 1
-            discount *= 1 - discount_rate
-            scaling_factor += discount
-        end
+end
+
+function npv_opex(
+    f::Function, x::T, times::TimeIndices,
+    discount_rate::Float64, npv_year::Int
+) where T
+
+    result = 0
+
+    for (i, (y_start, y_end)) in enumerate(opex_years(times))
+
+        scaling_factor = sum((1 - discount_rate)^(y - npv_year)
+                             for y in y_start:y_end)
 
         result += scaling_factor * f(x, i)
 
@@ -66,25 +97,19 @@ function npv(
 
 end
 
-function npv(
-    f::Function, xs::Vector{T}, times::TimeIndices, discount_rate::Float64
+function npv_opex(
+    f::Function, xs::Vector{T}, times::TimeIndices,
+    discount_rate::Float64, npv_year::Int
 ) where T
 
     result = 0
-    prev_year = times.base_year
-    discount = 1.0
 
-    for (year, x) in zip(times.investment_years, xs)
+    for (i, (y_start, y_end)) in enumerate(opex_years(times))
 
-        scaling_factor = 0.
+        scaling_factor = sum((1 - discount_rate)^(y - npv_year)
+                             for y in y_start:y_end)
 
-        while prev_year < year
-            prev_year += 1
-            discount *= 1 - discount_rate
-            scaling_factor += discount
-        end
-
-        result += scaling_factor * f(x)
+        result += scaling_factor * f(xs[i])
 
     end
 

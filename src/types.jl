@@ -126,6 +126,7 @@ function roundtrip_efficiency end
 
 
 function cost end
+function cost_fom end
 function co2 end
 function co2_offset_cost end
 

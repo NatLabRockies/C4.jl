@@ -104,15 +104,18 @@ struct DispatchSequence{S <: DispatchableSystem}
 end
 
 co2(sequence::DispatchSequence) =
+    annualization_factor(sequence.time) *
     sum(co2(recurrence) for recurrence in sequence.recurrences; init=0)
 
-co2_offset_cost(sequence::DispatchSequence) =
-    (isnothing(sequence.co2_offsets) ? 0. :
-        sequence.co2_offsets * sequence.co2_offset_price)
+co2_offset_cost(sequence::DispatchSequence) = if isnothing(sequence.co2_offsets)
+    0.
+else
+    annualization_factor(sequence.time) * sequence.co2_offsets * sequence.co2_offset_price
+end
 
 cost(sequence::DispatchSequence) =
-    sum(cost(recurrence) for recurrence in sequence.recurrences; init=0) +
-    co2_offset_cost(sequence)
+    co2_offset_cost(sequence) + annualization_factor(sequence.time) *
+    sum(cost(recurrence) for recurrence in sequence.recurrences; init=0)
 
 function sequence_recurrences(
     m::JuMP.Model, system::S, dispatches::Vector{SystemDispatch{S}},

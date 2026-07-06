@@ -1,6 +1,6 @@
-function SystemParams(datadir::String)
+function SystemParams(datadir::String; opex_endyears::Int=1)
 
-    system = load_system(datadir)
+    system = load_system(datadir, opex_endyears)
 
     fueldir = joinpath(datadir, "fuel")
     load_fuels!(system, fueldir)
@@ -37,7 +37,7 @@ function SystemParams(datadir::String)
 
 end
 
-function load_system(datadir::String; base_year::InvestmentYear=Int16(2025))
+function load_system(datadir::String, opex_endyears::Int)
 
     name = basename(datadir)
 
@@ -56,7 +56,7 @@ function load_system(datadir::String; base_year::InvestmentYear=Int16(2025))
         disp_daycounts[dy] = maximum(x[3] for x in idxs if x[2] == dy)
     end
 
-    times = TimeIndices(base_year, invyears, disp_daycounts)
+    times = TimeIndices(invyears, disp_daycounts, last(invyears) + opex_endyears - 1)
 
     check_dispatchidxs(idxs, times)
 
@@ -125,6 +125,7 @@ function load_existing_thermaltechs!(system::SystemParams, datadir::String)
         startup_heat = Float64(techs[r, 5]) / powerunits_MW
 
         cost_vom = defaultinvestmentdata(system.times, 0.)
+        cost_fom = defaultinvestmentdata(system.times, 0.)
 
         unit_size = Float64(techs[r, 6]) / powerunits_MW
         rating = defaultdispatchdata(system.times, 1.)
@@ -137,7 +138,7 @@ function load_existing_thermaltechs!(system::SystemParams, datadir::String)
         _, fuel = get_entity(system, FuelParams, fuelname)
 
         tech = ThermalExistingParams(
-            techname, category, fuel, heat_rate, startup_heat, cost_vom,
+            techname, category, fuel, heat_rate, startup_heat, cost_vom, cost_fom,
             unit_size, rating, min_gen, max_ramp, min_uptime, min_downtime,
             ThermalExistingSiteParams[])
 
@@ -147,6 +148,9 @@ function load_existing_thermaltechs!(system::SystemParams, datadir::String)
 
     load_investment_timeseries!(system, ThermalExistingParams,
         joinpath(datadir, "tech_cost_vom.csv"), :cost_vom, x -> x * powerunits_MW)
+
+    load_investment_timeseries!(system, ThermalExistingParams,
+        joinpath(datadir, "tech_cost_fom.csv"), :cost_fom, x -> x * powerunits_MW)
 
     load_dispatch_timeseries!(system, ThermalExistingParams,
         joinpath(datadir, "tech_rating.csv"), :rating, x -> x < 0.01 ? 0. : x)
@@ -213,6 +217,7 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
         startup_heat = Float64(techs[r, 5]) / powerunits_MW
 
         cost_vom = defaultinvestmentdata(system.times, 0.)
+        cost_fom = defaultinvestmentdata(system.times, 0.)
         cost_capital = defaultinvestmentdata(system.times, 0.)
 
         max_units = defaultinvestmentdata(system.times, 0)
@@ -232,7 +237,7 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
 
         tech = ThermalCandidateParams(
             techname, category, fuel, heat_rate, startup_heat,
-            cost_vom, cost_capital, max_units, unit_size, rating,
+            cost_vom, cost_fom, cost_capital, max_units, unit_size, rating,
             min_gen, max_ramp, min_uptime, min_downtime, λ, μ)
 
         push!(system.thermaltechs_candidate, tech)
@@ -241,6 +246,9 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
 
     load_investment_timeseries!(system, ThermalCandidateParams,
         joinpath(datadir, "tech_cost_vom.csv"), :cost_vom, x -> x * powerunits_MW)
+
+    load_investment_timeseries!(system, ThermalCandidateParams,
+        joinpath(datadir, "tech_cost_fom.csv"), :cost_fom, x -> x * powerunits_MW)
 
     load_investment_timeseries!(system, ThermalCandidateParams,
         joinpath(datadir, "tech_cost_capital.csv"), :cost_capital, x -> x * powerunits_MW)
@@ -276,9 +284,11 @@ function load_existing_variabletechs!(system::SystemParams, datadir::String)
         category = string(techs[r, 2])
 
         cost_vom = defaultinvestmentdata(system.times, 0.)
+        cost_fom = defaultinvestmentdata(system.times, 0.)
 
         tech = VariableExistingParams(
-            techname, category, cost_vom, VariableExistingSiteParams[])
+            techname, category, cost_vom, cost_fom,
+            VariableExistingSiteParams[])
 
         push!(system.variabletechs_existing, tech)
 
@@ -286,6 +296,9 @@ function load_existing_variabletechs!(system::SystemParams, datadir::String)
 
     load_investment_timeseries!(system, VariableExistingParams,
         joinpath(datadir, "tech_cost_vom.csv"), :cost_vom, x -> x * powerunits_MW)
+
+    load_investment_timeseries!(system, VariableExistingParams,
+        joinpath(datadir, "tech_cost_fom.csv"), :cost_fom, x -> x * powerunits_MW)
 
 end
 
@@ -340,9 +353,10 @@ function load_candidate_variabletechs!(system::SystemParams, datadir::String)
 
         cost_capital = defaultinvestmentdata(system.times, 0.)
         cost_vom = defaultinvestmentdata(system.times, 0.)
+        cost_fom = defaultinvestmentdata(system.times, 0.)
 
         tech = VariableCandidateParams(
-            techname, category, cost_capital, cost_vom,
+            techname, category, cost_capital, cost_vom, cost_fom,
             VariableCandidateSiteParams[])
 
         push!(system.variabletechs_candidate, tech)
@@ -351,6 +365,9 @@ function load_candidate_variabletechs!(system::SystemParams, datadir::String)
 
     load_investment_timeseries!(system, VariableCandidateParams,
         joinpath(datadir, "tech_cost_vom.csv"), :cost_vom, x -> x * powerunits_MW)
+
+    load_investment_timeseries!(system, VariableCandidateParams,
+        joinpath(datadir, "tech_cost_fom.csv"), :cost_fom, x -> x * powerunits_MW)
 
     load_investment_timeseries!(system, VariableCandidateParams,
         joinpath(datadir, "tech_cost_capital.csv"), :cost_capital, x -> x * powerunits_MW)
@@ -416,9 +433,12 @@ function load_existing_storagetechs!(system::SystemParams, datadir::String)
         roundtrip_efficiency = Float64(techs[r, 4])
 
         cost_vom = defaultinvestmentdata(system.times, 0.)
+        cost_fom_power = defaultinvestmentdata(system.times, 0.)
+        cost_fom_energy = defaultinvestmentdata(system.times, 0.)
 
         tech = StorageExistingParams(
-            techname, category, duration, roundtrip_efficiency, cost_vom,
+            techname, category, duration, roundtrip_efficiency,
+            cost_vom, cost_fom_power, cost_fom_energy,
             StorageExistingSiteParams[])
 
         push!(system.storagetechs_existing, tech)
@@ -427,6 +447,14 @@ function load_existing_storagetechs!(system::SystemParams, datadir::String)
 
     load_investment_timeseries!(system, StorageExistingParams,
         joinpath(datadir, "tech_cost_vom.csv"), :cost_vom, x -> x * powerunits_MW)
+
+    load_investment_timeseries!(system, StorageExistingParams,
+        joinpath(datadir, "tech_cost_fom_power.csv"), :cost_fom_power,
+        x -> x * powerunits_MW)
+
+    load_investment_timeseries!(system, StorageExistingParams,
+        joinpath(datadir, "tech_cost_fom_energy.csv"), :cost_fom_energy,
+        x -> x * powerunits_MW)
 
 end
 
@@ -478,6 +506,8 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
         roundtrip_efficiency = Float64(techs[r, 3])
 
         cost_vom = defaultinvestmentdata(system.times, 0.)
+        cost_fom_power = defaultinvestmentdata(system.times, 0.)
+        cost_fom_energy = defaultinvestmentdata(system.times, 0.)
         cost_capital_power = defaultinvestmentdata(system.times, 0.)
         cost_capital_energy = defaultinvestmentdata(system.times, 0.)
 
@@ -486,7 +516,8 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
 
         tech = StorageCandidateParams(
             techname, category, roundtrip_efficiency,
-            cost_vom, cost_capital_power, cost_capital_energy,
+            cost_vom, cost_fom_power, cost_fom_energy,
+            cost_capital_power, cost_capital_energy,
             power_max, energy_max)
 
         push!(system.storagetechs_candidate, tech)
@@ -495,6 +526,14 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
 
     load_investment_timeseries!(system, StorageCandidateParams,
         joinpath(datadir, "tech_cost_vom.csv"), :cost_vom,
+        x -> x * powerunits_MW)
+
+    load_investment_timeseries!(system, StorageCandidateParams,
+        joinpath(datadir, "tech_cost_fom_power.csv"), :cost_fom_power,
+        x -> x * powerunits_MW)
+
+    load_investment_timeseries!(system, StorageCandidateParams,
+        joinpath(datadir, "tech_cost_fom_energy.csv"), :cost_fom_energy,
         x -> x * powerunits_MW)
 
     load_investment_timeseries!(system, StorageCandidateParams,

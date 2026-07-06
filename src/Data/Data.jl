@@ -21,7 +21,7 @@ export TimeIndices,
        StorageExistingParams, StorageExistingSiteParams, StorageCandidateParams,
        SystemParams, total_demand, annualization_factor,
        year_dayofyear, days, n_investment_years, n_dispatch_years,
-       n_dispatch_days, n_dispatch_hours, npv,
+       n_dispatch_days, n_dispatch_hours, npv_opex, npv_capex,
        store_iteration, store_iteration_step
 
 include("time.jl")

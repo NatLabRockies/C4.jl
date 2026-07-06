@@ -30,9 +30,13 @@ maxpower(tech::StorageExpansion, i::Int) = sum(tech.power_new[1:i])
 
 maxenergy(tech::StorageExpansion, i::Int) = sum(tech.energy_new[1:i])
 
-cost(tech::StorageExpansion, i::Int) =
+cost_capex(tech::StorageExpansion, i::Int) =
     tech.power_new[i] * tech.params.cost_capital_power[i] +
     tech.energy_new[i] * tech.params.cost_capital_energy[i]
+
+cost_fom(tech::StorageExpansion, i::Int) =
+    maxpower(tech, i) * tech.params.cost_fom_power[i] +
+    maxenergy(tech, i) * tech.params.cost_fom_energy[i]
 
 operating_cost(tech::StorageExpansion, i::Int) =
     tech.params.cost_vom[i]
@@ -61,6 +65,8 @@ function StorageExistingParams(tech::StorageExpansion)
         new_duration,
         params.roundtrip_efficiency,
         params.cost_vom,
+        params.cost_fom_power,
+        params.cost_fom_energy,
         [StorageExistingSiteParams(tech.params.name * " built", new_power)]
     )
 
@@ -75,6 +81,8 @@ function StorageCandidateParams(tech::StorageExpansion)
         params.category,
         params.roundtrip_efficiency,
         params.cost_vom,
+        params.cost_fom_power,
+        params.cost_fom_energy,
         params.cost_capital_power,
         params.cost_capital_energy,
         params.power_max .- value.(tech.power_new),

@@ -28,6 +28,7 @@ struct ThermalExistingParams <: DispatchableThermalTech
     startup_heat::Float64 # MMBtu/start
 
     cost_vom::InvestmentDataArray{Float64} # $/MWh
+    cost_fom::InvestmentDataArray{Float64} # $/MWh
 
     unit_size::Float64 # MW/unit
     rating::DispatchDataArray{Float64}
@@ -86,7 +87,8 @@ struct ThermalCandidateParams
     startup_heat::Float64 # MMBtu/start
 
     cost_vom::InvestmentDataArray{Float64} # $/MWh
-    cost_capital::InvestmentDataArray{Float64} # annualized $/MW
+    cost_fom::InvestmentDataArray{Float64} # $/MW
+    cost_capital::InvestmentDataArray{Float64} # $/MW
 
     max_units::InvestmentDataArray{Int}
 

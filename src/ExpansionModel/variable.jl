@@ -68,13 +68,17 @@ sites(tech::VariableExpansion) = tech.sites
 
 cost_generation(tech::VariableExpansion, invyear::Int) = tech.params.cost_vom[invyear]
 
-cost(build::VariableExpansion, invyear::Int) =
+cost_capex(build::VariableExpansion, invyear::Int) =
     nameplatecapacity(build, invyear) * build.params.cost_capital[invyear]
+
+cost_fom(build::VariableExpansion, invyear::Int) =
+    nameplatecapacity(build, invyear) * build.params.cost_fom[invyear]
 
 VariableExistingParams(build::VariableExpansion) = VariableExistingParams(
     build.params.name,
     build.params.category,
     build.params.cost_vom,
+    build.params.cost_fom,
     VariableExistingSiteParams.(build.sites)
 )
 
@@ -83,5 +87,6 @@ VariableCandidateParams(build::VariableExpansion) = VariableCandidateParams(
     build.params.category,
     build.params.cost_capital,
     build.params.cost_vom,
+    build.params.cost_fom,
     VariableCandidateSiteParams.(build.sites)
 )
