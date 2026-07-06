@@ -116,7 +116,7 @@ function iterate_ra_cem(
             chronologies = [
                 add_stressperiod(sys, invyear, chrono, ram_result,
                                  skip_existing=skip_existing_stress_periods)
-                 for (invyear, chrono) in enumerate(base_chronologies)]
+                 for (invyear, chrono) in enumerate(chronologies)]
         end
 
         if endog_risk
