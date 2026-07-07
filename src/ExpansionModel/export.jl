@@ -62,14 +62,13 @@ function store(con::DBInterface.Connection, iter::Int, sys::SystemExpansion)
 
     DuckDB.close(appender)
 
-    DBInterface.execute(con, "CREATE VIEW IF NOT EXISTS summary_tech_capex AS
+    DBInterface.execute(con, "CREATE VIEW IF NOT EXISTS summary_capex AS
         SELECT iteration, year, site, tech,
-            sum(power * cost_capital_power) OVER cumulative AS cost_power,
-            sum(energy * cost_capital_energy) OVER cumulative AS cost_energy
+            power * cost_capital_power AS cost_power,
+            energy * cost_capital_energy AS cost_energy
         FROM sitebuilds
         JOIN techs USING (tech)
         JOIN tech_costs USING (year, tech)
-        WINDOW cumulative AS (PARTITION BY iteration, site, tech ORDER BY year)
         ORDER BY iteration, tech, site, year
     ")
 

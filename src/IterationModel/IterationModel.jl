@@ -16,7 +16,6 @@ import JuMP: value
 
 export iterate_ra_cem
 
-
 function iterate_ra_cem(
     sys::SystemParams, base_chronologies::Vector{DispatchProxyMapping},
     max_neue::Float64, optimizer; neue_tol::Float64=.001,

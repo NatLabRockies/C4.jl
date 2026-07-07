@@ -8,6 +8,8 @@ using C4.ExpansionModel
 using C4.IterationModel
 
 import C4: store, powerunits_MW
+import C4.ExpansionModel: cost_capex, cost_fom
+import C4.DispatchModel: generation_cost, co2_offset_cost
 
 using DuckDB
 
@@ -114,9 +116,19 @@ sys_built = SystemParams(cem)
 display(sys_built)
 
 println("NEUEs: ", neues(ram))
-println("Capex: ", value(capex(cem)))
-println("Opex: ", value(opex(cem)))
-println("Carbon Offsets Cost: ", value(co2_offset_cost(cem)))
+println()
+
+println("Total Capex: ", value(capex(cem)))
+println("\t2030 Capex: ", value(cost_capex(cem.builds, 1)))
+println("\t2050 Capex: ", value(cost_capex(cem.builds, 2)))
+println("Total Opex: ", value(opex(cem)))
+println("\t2030 Variable Opex: ", value(generation_cost(cem.dispatches[1])))
+println("\t2030 CO2 Cost: ", value(co2_offset_cost(cem.dispatches[1])))
+println("\t2030 Fixed Opex: ", value(cost_fom(cem.builds, 1)))
+println("\t2050 Variable Opex: ", value(generation_cost(cem.dispatches[2])))
+println("\t2050 CO2 Cost: ", value(co2_offset_cost(cem.dispatches[2])))
+println("\t2050 Fixed Opex: ", value(cost_fom(cem.builds, 2)))
+println("Total Carbon Offset Cost: ", value(co2_offset_cost(cem)))
 println()
 
 println("System Cost: ", value(cost(cem)))
@@ -133,7 +145,6 @@ pcm = DispatchProblem(sys_built, 1, first(repeatedchrono), optimizer,
 solve!(pcm)
 println("2030 Operating Cost: ", value(cost(pcm)))
 println("2030 Carbon Offset Cost (included in opex): ", value(co2_offset_cost(pcm)))
-println("CEM 2030 Opex: ", value(cost(cem.dispatches[1])))
 
 pcm = DispatchProblem(sys_built, 2, last(repeatedchrono), optimizer,
                       voll=voll, co2_max_intensity=50., co2_offset_price=100.,
@@ -141,4 +152,3 @@ pcm = DispatchProblem(sys_built, 2, last(repeatedchrono), optimizer,
 solve!(pcm)
 println("2050 Operating Cost: ", value(cost(pcm)))
 println("2050 Carbon Offset Cost (included in opex): ", value(co2_offset_cost(pcm)))
-println("CEM 2050 Opex: ", value(cost(cem.dispatches[2])))

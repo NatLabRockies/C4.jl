@@ -159,7 +159,7 @@ function store(
     for (y, year) in enumerate(times.investment_years)
         DuckDB.append(appender.tech_costs, tech.name)
         DuckDB.append(appender.tech_costs, year)
-        DuckDB.append(appender.tech_costs, cost_startup(tech, y) / powerunits_MW)
+        DuckDB.append(appender.tech_costs, cost_startup(tech, y))
         DuckDB.append(appender.tech_costs, cost_generation(tech, y) / powerunits_MW)
         DuckDB.append(appender.tech_costs, nothing)
         DuckDB.append(appender.tech_costs, nothing)

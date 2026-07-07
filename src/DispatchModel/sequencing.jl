@@ -113,9 +113,12 @@ else
     annualization_factor(sequence.time) * sequence.co2_offsets * sequence.co2_offset_price
 end
 
-cost(sequence::DispatchSequence) =
-    co2_offset_cost(sequence) + annualization_factor(sequence.time) *
+generation_cost(sequence::DispatchSequence) =
+    annualization_factor(sequence.time) *
     sum(cost(recurrence) for recurrence in sequence.recurrences; init=0)
+
+cost(sequence::DispatchSequence) =
+    co2_offset_cost(sequence) + generation_cost(sequence)
 
 function sequence_recurrences(
     m::JuMP.Model, system::S, dispatches::Vector{SystemDispatch{S}},

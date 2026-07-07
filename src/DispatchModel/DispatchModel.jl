@@ -77,14 +77,11 @@ function solve!(prob::DispatchProblem)
 
 end
 
-cost(prob::DispatchProblem) =
-    annualization_factor(prob.dispatch.time) * cost(prob.dispatch)
+cost(prob::DispatchProblem) = cost(prob.dispatch)
 
-co2(prob::DispatchProblem) =
-    annualization_factor(prob.dispatch.time) * co2(prob.dispatch)
+co2(prob::DispatchProblem) = co2(prob.dispatch)
 
-co2_offset_cost(prob::DispatchProblem) =
-    annualization_factor(prob.dispatch.time) * co2_offset_cost(prob.dispatch)
+co2_offset_cost(prob::DispatchProblem) = co2_offset_cost(prob.dispatch)
 
 include("export.jl")
 
