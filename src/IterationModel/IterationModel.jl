@@ -22,7 +22,12 @@ function iterate_ra_cem(
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
-    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN)
+    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN,
+    ra_optimizer=nothing)
+
+    if isnothing(ra_optimizer)
+        ra_optimizer = optimizer
+    end
 
     persist = length(outfile) > 0
     timeout += time()
@@ -31,7 +36,7 @@ function iterate_ra_cem(
     max_eue = max_neue * neue_factor
 
     ram_start = now()
-    ram = AdequacyProblem(sys, optimizer, samples=nsamples)
+    ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples)
     ram_result = solve(ram)
     ram_end = now()
 
@@ -93,7 +98,7 @@ function iterate_ra_cem(
 
         ram_start = now()
         sys_built = SystemParams(cem)
-        ram = AdequacyProblem(sys_built, optimizer, samples=nsamples)
+        ram = AdequacyProblem(sys_built, ra_optimizer, samples=nsamples)
         ram_result = solve(ram)
         ram_end = now()
 
