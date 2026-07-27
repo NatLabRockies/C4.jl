@@ -18,7 +18,8 @@ export iterate_ra_cem
 
 function iterate_ra_cem(
     sys::SystemParams, base_chronologies::Vector{DispatchProxyMappings},
-    max_neue::Float64, optimizer; neue_tol::Float64=.001,
+    max_neue::Float64, optimizer; ra_optimizer=nothing,
+    neue_tol::Float64=.001,
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     max_co2_intensity::Float64=NaN, # kg/MWh
     co2_offset_price::Float64=9999., # $/tonne CO2
@@ -27,6 +28,10 @@ function iterate_ra_cem(
     check_dispatch_invyears::Vector{Int}=Int[], check_dispatch_voll::Real=NaN,
     unit_commitment::Bool=true, wacc::Float64=0.,
     cem_voll::Float64=NaN)
+
+    if isnothing(ra_optimizer)
+        ra_optimizer = optimizer
+    end
 
     persist = length(outfile) > 0
     timeout += time()
@@ -37,7 +42,7 @@ function iterate_ra_cem(
     max_co2s = max_co2_intensity .* (demands .* powerunits_MW) .* 1e-3 # in tonnes
 
     ram_start = now()
-    ram = AdequacyProblem(sys, optimizer, samples=nsamples)
+    ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples)
     ram_result = solve(ram)
     ram_end = now()
 
@@ -105,7 +110,7 @@ function iterate_ra_cem(
 
         ram_start = now()
         sys_built = SystemParams(cem)
-        ram = AdequacyProblem(sys_built, optimizer, samples=nsamples)
+        ram = AdequacyProblem(sys_built, ra_optimizer, samples=nsamples)
         ram_result = solve(ram)
         ram_end = now()
 

@@ -19,7 +19,6 @@ struct AdequacyParams
     generators_lambda::Matrix{Float64} # n_timesteps x n_generators
     generators_mu::Matrix{Float64} # n_timesteps x n_generators
 
-    # Note: Provided storages MUST be pre-sorted by round-trip efficiency
     storages::Vector{StorageParams} # n_storages
 
     function AdequacyParams(
@@ -45,6 +44,22 @@ struct AdequacyParams
             generators_capacity, generators_lambda, generators_mu, storages)
 
     end
+
+end
+
+function AdequacyParams(sys::SystemParams, invyear::Int)
+
+    demand = vec(sys.demand[:, :, invyear]) .* powerunits_MW
+
+    generators_capacity, generators_lambda, generators_mu =
+        load_generators(sys, invyear)
+
+    storages = load_storages(sys, invyear)
+
+    return AdequacyParams(
+        demand,
+        generators_capacity, generators_lambda, generators_mu,
+        storages)
 
 end
 

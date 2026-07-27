@@ -1,5 +1,7 @@
 module AdequacyModel
 
+import Base.Threads: nthreads, @spawn
+
 import Dates: DateTime, Hour
 import Random: rand, seed!, AbstractRNG
 
@@ -22,37 +24,66 @@ include("AdequacyOptimization.jl")
 struct AdequacyProblem
 
     sys::SystemParams
-    params::Vector{AdequacyParams}
-    opts::Vector{AdequacyOptimization}
+
+    optimizer::Any
 
     samples::Int
+    threaded::Bool
 
-    function AdequacyProblem(sys::SystemParams, optimizer; samples::Int)
+    function AdequacyProblem(
+        sys::SystemParams, optimizer;
+        samples::Int, threaded::Bool=true)
 
-        params = Vector{AdequacyParams}(undef, n_investment_years(sys.times))
-        opts = Vector{AdequacyOptimization}(undef, n_investment_years(sys.times))
-
-        for i in eachindex(sys.times.investment_years)
-
-            demand = vec(sys.demand[:, :, i]) .* powerunits_MW
-
-            generators_capacity, generators_lambda, generators_mu =
-                load_generators(sys, i)
-
-            storages = load_storages(sys, i)
-
-            params[i] = AdequacyParams(
-                demand,
-                generators_capacity, generators_lambda, generators_mu,
-                storages)
-
-            opts[i] = AdequacyOptimization(params[i], optimizer)
-
-        end
-
-        return new(sys, params, opts, samples)
+        return new(sys, optimizer, samples, threaded)
 
     end
+
+end
+
+mutable struct SingleThreadAdequacyResult
+
+    n_samples::Int
+
+    lolps::Vector{Float64} # n_timesteps
+    eues::Vector{Float64} # n_timesteps
+
+    generation_dEUEs::Vector{Float64} # n_timesteps
+    storage_power_dEUEs::Vector{Float64} # n_storages
+    storage_energy_dEUEs::Vector{Float64} # n_storages
+
+    function SingleThreadAdequacyResult(params::AdequacyParams)
+
+        n_timesteps = params.n_timesteps
+        n_storages = params.n_storages
+
+        lolps = zeros(n_timesteps)
+        eues = zeros(n_timesteps)
+
+        generation_dEUEs = zeros(n_timesteps)
+        storage_power_dEUEs = zeros(n_storages)
+        storage_energy_dEUEs = zeros(n_storages)
+
+        return new(
+            0, lolps, eues,
+            generation_dEUEs, storage_power_dEUEs, storage_energy_dEUEs)
+
+    end
+
+end
+
+function merge!(
+    result::SingleThreadAdequacyResult, other::SingleThreadAdequacyResult)
+
+    result.n_samples += other.n_samples
+
+    result.lolps += other.lolps
+    result.eues += other.eues
+
+    result.generation_dEUEs += other.generation_dEUEs
+    result.storage_power_dEUEs += other.storage_power_dEUEs
+    result.storage_energy_dEUEs += other.storage_energy_dEUEs
+
+    return
 
 end
 
@@ -68,70 +99,129 @@ struct AdequacyResult
     storage_power_dEUEs::Matrix{Float64} # n_storages x n_investment_years
     storage_energy_dEUEs::Matrix{Float64} # n_storages x n_investment_years
 
+    function AdequacyResult(
+        prob::AdequacyProblem, results::Vector{SingleThreadAdequacyResult})
+
+        n_days = n_dispatch_days(prob.sys.times)
+        n_invyears = n_investment_years(prob.sys.times)
+        n_storages = length(first(results).storage_power_dEUEs)
+
+        lolps = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
+        eues = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
+
+        generation_dEUEs = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
+        stor_power_dEUEs = Matrix{Float64}(undef, n_storages, n_invyears)
+        stor_energy_dEUEs = Matrix{Float64}(undef, n_storages, n_invyears)
+
+        for (i, result) in enumerate(results)
+
+            n = result.n_samples
+
+            lolps[:, :, i] .=
+                reshape(result.lolps, N_HOURS_IN_DAY, n_days) ./ n
+
+            eues[:, :, i] .=
+                reshape(result.eues, N_HOURS_IN_DAY, n_days) ./ n
+
+            generation_dEUEs[:, :, i] .=
+                reshape(result.generation_dEUEs, N_HOURS_IN_DAY, n_days) ./ n
+
+            stor_power_dEUEs[:, i] .= result.storage_power_dEUEs ./ n
+
+            stor_energy_dEUEs[:, i] .= result.storage_energy_dEUEs ./ n
+
+        end
+
+        return new(
+            prob.sys.times, prob.sys.demand * powerunits_MW,
+            lolps, eues, generation_dEUEs, stor_power_dEUEs, stor_energy_dEUEs)
+
+    end
+
+end
+
+
+function makeseeds(samples::Channel{Int}, n_samples::Int)
+
+    for i in 1:n_samples
+        put!(samples, i)
+    end
+
+    close(samples)
+
+end
+
+function solve_singlethreaded(
+    prob::AdequacyProblem, params::AdequacyParams,
+    samples::Channel{Int}, results::Channel{SingleThreadAdequacyResult})
+
+    opt = AdequacyOptimization(params, prob.optimizer)
+    result = SingleThreadAdequacyResult(params)
+
+    for i in samples
+
+        sample_surplus!(opt, params, i)
+        solve!(opt)
+
+        result.n_samples += 1
+
+        ues = unserved(opt)
+        result.eues .+= ues
+        result.lolps .+= ues .> 1e-3
+
+        result.generation_dEUEs .+= grid_dual(opt)
+        result.storage_power_dEUEs .+= stor_power_dual(opt)
+        result.storage_energy_dEUEs .+= stor_energy_dual(opt)
+
+    end
+
+    put!(results, result)
+
 end
 
 function solve(prob::AdequacyProblem)
 
-    # Note: We assume number of timesteps and storages is constant across all
-    #       investment years, which is true, but isn't structurally
-    #       guaranteed
+    n_threads = prob.threaded ? nthreads() : 1
 
-    n_days = n_dispatch_days(prob.sys.times)
     n_invyears = n_investment_years(prob.sys.times)
-    n_storages = first(prob.params).n_storages
+    results = Vector{SingleThreadAdequacyResult}(undef, n_invyears)
 
-    demand = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
-    lolps = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
-    eues = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
+    for i in eachindex(results)
 
-    generation_dEUEs = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
-    stor_power_dEUE = Matrix{Float64}(undef, n_storages, n_invyears)
-    stor_energy_dEUE = Matrix{Float64}(undef, n_storages, n_invyears)
+        samples_i = Channel{Int}()
+        results_i = Channel{SingleThreadAdequacyResult}(n_threads)
 
-    for (i, (params, opt)) in enumerate(zip(prob.params, prob.opts))
+        params = AdequacyParams(prob.sys, i)
 
-        lolps_i = zeros(params.n_timesteps)
-        eues_i = zeros(params.n_timesteps)
+        @spawn makeseeds(samples_i, prob.samples)
 
-        dEUEs_grid = zeros(params.n_timesteps)
-        dEUEs_stor_power = zeros(params.n_storages)
-        dEUEs_stor_energy = zeros(params.n_storages)
+        if prob.threaded
 
-        for s in 1:prob.samples
+            for _ in 1:n_threads
+                @spawn solve_singlethreaded(prob, params, samples_i, results_i)
+            end
 
-            sample_surplus!(opt, params, s)
-            solve!(opt)
+            result_i = take!(results_i)
 
-            ues = unserved(opt)
-            eues_i .+= ues
-            lolps_i .+= ues .> 1e-3
+            for _ in 2:n_threads
+                merge!(result_i, take!(results_i))
+            end
 
-            dEUEs_grid .+= grid_dual(opt)
-            dEUEs_stor_power .+= stor_power_dual(opt)
-            dEUEs_stor_energy .+= stor_energy_dual(opt)
+            close(results_i)
+
+        else
+
+            solve_singlethreaded(prob, samples_i, results_i)
+            result_i = take!(results_i)
+            close(results_i)
 
         end
 
-        lolps_i ./= prob.samples
-        eues_i ./= prob.samples
-
-        dEUEs_grid ./= prob.samples
-        dEUEs_stor_power ./= prob.samples
-        dEUEs_stor_energy ./= prob.samples
-
-        demand[:, :, i] = reshape(params.demand, N_HOURS_IN_DAY, n_days)
-        lolps[:, :, i] = reshape(lolps_i, N_HOURS_IN_DAY, n_days)
-        eues[:, :, i] = reshape(eues_i, N_HOURS_IN_DAY, n_days)
-
-        generation_dEUEs[:, :, i] = reshape(dEUEs_grid, N_HOURS_IN_DAY, n_days)
-        stor_power_dEUE[:, i] = dEUEs_stor_power
-        stor_energy_dEUE[:, i] = dEUEs_stor_energy
+        results[i] = result_i
 
     end
 
-    return AdequacyResult(
-        prob.sys.times, demand, lolps, eues,
-        generation_dEUEs, stor_power_dEUE, stor_energy_dEUE)
+    return AdequacyResult(prob, results)
 
 end
 
