@@ -3,7 +3,6 @@ struct StorageExpansion <: StorageTechnology
     params::StorageCandidateParams
 
     power_new::JuMP.VariableRef
-    energy_new::JuMP.VariableRef
 
     function StorageExpansion(
         m::JuMP.Model, techparams::StorageCandidateParams)
@@ -11,22 +10,23 @@ struct StorageExpansion <: StorageTechnology
         power_new = @variable(m, lower_bound=0, upper_bound=techparams.power_max)
         JuMP.set_name(power_new, "storage_new_power[$(techparams.name)]")
 
-        energy_new = @variable(m, lower_bound=0, upper_bound=techparams.energy_max)
-        JuMP.set_name(energy_new, "storage_new_energy[$(techparams.name)]")
-
-        new(techparams, power_new, energy_new)
+        new(techparams, power_new)
 
     end
 
 end
 
+duration(tech::StorageExpansion) =
+    tech.params.energy_max / tech.params.power_max
+
 maxpower(tech::StorageExpansion) = tech.power_new
 
-maxenergy(tech::StorageExpansion) = tech.energy_new
+maxenergy(tech::StorageExpansion) = tech.power_new * duration(tech)
 
 cost(tech::StorageExpansion) =
-    tech.power_new * tech.params.cost_capital_power +
-    tech.energy_new * tech.params.cost_capital_energy
+    tech.power_new * (
+        tech.params.cost_capital_power +
+        duration(tech) * tech.params.cost_capital_energy)
 
 operating_cost(tech::StorageExpansion) =
     tech.params.cost_operation
@@ -36,15 +36,13 @@ roundtrip_efficiency(tech::StorageExpansion) =
 
 function warmstart_builds!(build::StorageExpansion, prev_build::StorageExpansion)
     JuMP.set_start_value(build.power_new, value(prev_build.power_new))
-    JuMP.set_start_value(build.energy_new, value(prev_build.energy_new))
     return
 end
 
 function StorageExistingParams(tech::StorageExpansion)
 
     new_power = value(tech.power_new)
-    new_energy = value(tech.energy_new)
-    new_duration = iszero(new_power) ? 0. : new_energy / new_power
+    new_duration = duration(tech)
 
     params = tech.params
 
@@ -63,6 +61,9 @@ function StorageCandidateParams(tech::StorageExpansion)
 
     params = tech.params
 
+    new_power = value(tech.power_new)
+    new_duration = duration(tech)
+
     return StorageCandidateParams(
         params.name,
         params.category,
@@ -70,7 +71,7 @@ function StorageCandidateParams(tech::StorageExpansion)
         params.roundtrip_efficiency,
         params.cost_capital_power,
         params.cost_capital_energy,
-        params.power_max - value(tech.power_new),
-        params.energy_max - value(tech.energy_new))
+        params.power_max - new_power,
+        params.energy_max - new_power * new_duration)
 
 end

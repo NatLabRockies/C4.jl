@@ -96,7 +96,7 @@ end
 function store(appender::ExpansionAppender, iter::Int, tech::StorageExpansion)
 
     new_power = value(tech.power_new) * powerunits_MW
-    new_energy = value(tech.energy_new) * powerunits_MW
+    new_energy = new_power * duration(tech)
 
     DuckDB.append(appender.sitebuilds, iter)
     DuckDB.append(appender.sitebuilds, "")

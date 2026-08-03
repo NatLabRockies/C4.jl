@@ -61,23 +61,19 @@ struct StorageEUEReduction
     nameplate_power::Float64
     dEUE_power::Float64
 
-    nameplate_energy::Float64
-    dEUE_energy::Float64
-
     function StorageEUEReduction(
         build::StorageExpansion, power_dEUE::Float64, energy_dEUE::Float64)
 
-        return new(
-            value(maxpower(build)), -power_dEUE,
-            value(maxenergy(build)), -energy_dEUE)
+        dEUE = power_dEUE + duration(build) * energy_dEUE
+
+        return new(value(maxpower(build)), -dEUE)
 
     end
 
 end
 
 eue_adjustment(riskparams::StorageEUEReduction, build::StorageExpansion) =
-        riskparams.dEUE_power * (build.power_new - riskparams.nameplate_power) +
-        riskparams.dEUE_energy * (build.energy_new - riskparams.nameplate_energy)
+        riskparams.dEUE_power * (build.power_new - riskparams.nameplate_power)
 
 struct EUECuttingPlaneParams
 
