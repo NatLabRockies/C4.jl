@@ -498,7 +498,7 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
 
     validate_columns(
         techs, ["tech", "category", "roundtrip_efficiency",
-                "capital_recovery_period", "duration_min", "duration_max"],
+                "capital_recovery_period", "duration"],
                 techspath)
 
     allunique(techs[2:end, 1]) ||
@@ -511,8 +511,7 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
 
         roundtrip_efficiency = Float64(techs[r, 3])
         capital_recovery_period = Int(techs[r, 4])
-        duration_min = Float64(techs[r, 5])
-        duration_max = Float64(techs[r, 6])
+        duration = Float64(techs[r, 5])
 
         cost_vom = defaultinvestmentdata(system.times, 0.)
         cost_fom_power = defaultinvestmentdata(system.times, 0.)
@@ -521,14 +520,12 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
         cost_overnightcapital_energy = defaultinvestmentdata(system.times, 0.)
 
         power_max = defaultinvestmentdata(system.times, 0.)
-        energy_max = defaultinvestmentdata(system.times, 0.)
 
         tech = StorageCandidateParams(
-            techname, category,
-            roundtrip_efficiency, duration_min, duration_max,
+            techname, category, roundtrip_efficiency, duration,
             cost_vom, cost_fom_power, cost_fom_energy,
             cost_overnightcapital_power, cost_overnightcapital_energy,
-            capital_recovery_period, power_max, energy_max)
+            capital_recovery_period, power_max)
 
         push!(system.storagetechs_candidate, tech)
 
@@ -556,10 +553,6 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
 
     load_investment_timeseries!(system, StorageCandidateParams,
         joinpath(datadir, "tech_power_max.csv"), :power_max,
-        x -> x / powerunits_MW)
-
-    load_investment_timeseries!(system, StorageCandidateParams,
-        joinpath(datadir, "tech_energy_max.csv"), :energy_max,
         x -> x / powerunits_MW)
 
 end

@@ -123,7 +123,7 @@ function store(appender::ExpansionAppender, iter::Int,
     for (y, year) in enumerate(times.investment_years)
 
         new_power = value(tech.power_new[y]) * powerunits_MW
-        new_energy = value(tech.energy_new[y]) * powerunits_MW
+        new_energy = new_power * duration(tech)
 
         DuckDB.append(appender.sitebuilds, iter)
         DuckDB.append(appender.sitebuilds, year)
