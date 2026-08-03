@@ -14,9 +14,9 @@ import DelimitedFiles: writedlm
 import DuckDB
 import JuMP: value
 
-export iterate_ra_cem
+export iterate_neue
 
-function iterate_ra_cem(
+function iterate_neue(
     sys::SystemParams, base_chronologies::Vector{DispatchProxyMappings},
     max_neue::Float64, optimizer; ra_optimizer=nothing,
     neue_tol::Float64=.001,
@@ -75,18 +75,17 @@ function iterate_ra_cem(
     sys_built = nothing
     cem = nothing
     prev_cem = nothing
-    n_iters = 0
 
     # Shouldn't we use initial RA results here? Right now they're only used for ASPP
-    eue_estimator = [EUECuttingPlaneParams[] for i in eachindex(base_chronologies)]
+    eue_params = EUEParameters.(max_eues)
+    n_iters = 0
 
     while (time() < timeout)
 
         n_iters += 1
         cem_start = now()
 
-        cem = ExpansionProblem(sys, chronologies, eue_estimator, max_eues,
-                               optimizer,
+        cem = ExpansionProblem(sys, chronologies, eue_params, optimizer,
                                co2_intensity_max=co2_intensity_max,
                                co2_offset_price=co2_offset_price,
                                unit_commitment=unit_commitment,
@@ -139,7 +138,8 @@ function iterate_ra_cem(
 
         if endog_risk
             for i in eachindex(base_chronologies)
-                push!(eue_estimator[i], EUECuttingPlaneParams(cem.builds, ram_result, i))
+                push!(eue_params[i].planes,
+                      EUECuttingPlaneParams(cem.builds, ram_result, i))
             end
         end
 

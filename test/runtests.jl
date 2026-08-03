@@ -38,8 +38,6 @@ fullchrono = fullchronologyperiods(sys)
 repeatedchrono = [singleperiod(sys, i)
                   for i in eachindex(sys.times.investment_years)]
 
-null_eue = [EUECuttingPlaneParams[], EUECuttingPlaneParams[]]
-
 voll = 9000.
 
 pcm = DispatchProblem(sys, 1, fullchrono, optimizer, voll=voll)
@@ -48,14 +46,15 @@ solve!(pcm)
 # Note that ExpansionProblem takes its target in terms of
 # unnormalized EUE and powerunits_MW!
 # Nonzero values need to be scaled appropriately
+
 # Here avg_annual_energy is already in powerunits_MW
 max_eues = [
     avg_annual_energy(sys, 1) / 100_000 # 2030 10 ppm
     avg_annual_energy(sys, 2) / 100_000 # 2050 10 ppm
 ]
 
-# For iterate_ra_cem, which takes NEUE
-max_neue = 10.
+eue_params = EUEParameters.(max_eues)
+max_neue = 10. # for iterate_neue
 
 ram = AdequacyProblem(sys, optimizer, samples=1000, threaded=false)
 ram_results = solve(ram)
@@ -65,7 +64,7 @@ println("\nBase NEUEs = ", neue_estimates(ram_results))
 
 println("\n\nCopper sheet system, repeated chronology, manual iteration")
 
-cem = ExpansionProblem(sys, repeatedchrono, null_eue, max_eues, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, optimizer)
 write_to_file(cem.model, "model.lp")
 solve!(cem)
 
@@ -77,9 +76,11 @@ ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram) # Dig into these results
 println("\nNEUEs = ", neue_estimates(ram_results))
 
-eue_params = [[EUECuttingPlaneParams(cem.builds, ram_results, i)] for i in 1:2]
+for i in 1:2
+    push!(eue_params[i].planes, EUECuttingPlaneParams(cem.builds, ram_results, i))
+end
 
-cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eues, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, optimizer)
 write_to_file(cem.model, "model_riskcurves_1.lp")
 solve!(cem)
 
@@ -92,10 +93,10 @@ ram_results = solve(ram)
 println("\nNEUEs = ", neue_estimates(ram_results))
 
 for i in 1:2
-    push!(eue_params[i], EUECuttingPlaneParams(cem.builds, ram_results, i))
+    push!(eue_params[i].planes, EUECuttingPlaneParams(cem.builds, ram_results, i))
 end
 
-cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eues, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, optimizer)
 write_to_file(cem.model, "model_riskcurves_2.lp")
 solve!(cem)
 
@@ -108,7 +109,7 @@ ram_results = solve(ram)
 println("\nNEUEs = ", neue_estimates(ram_results))
 
 println("\nSingle-region Iterative CEM:")
-cem, ram, pcm = iterate_ra_cem(
+cem, ram, pcm = iterate_neue(
     sys, repeatedchrono, max_neue, optimizer,
     nsamples=100_000, check_dispatch_invyears=[1 ,2], check_dispatch_voll=voll,
     outfile=timestamp * ".db", unit_commitment=true,

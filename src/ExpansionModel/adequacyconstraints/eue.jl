@@ -147,7 +147,7 @@ function eue_estimate(
 
 end
 
-struct ReliabilityConstraints
+struct EUEConstraints <: AdequacyConstraints
 
     eue_params::Vector{EUECuttingPlaneParams}
 
@@ -157,25 +157,37 @@ struct ReliabilityConstraints
     eue_estimators::Vector{JuMP_ExpressionRef}
     eue_cuttingplanes::Vector{JuMP_GreaterThanConstraintRef}
 
-    function ReliabilityConstraints(
-        m::JuMP.Model, builds::SystemExpansion, invyear::Int,
-        eue_params::Vector{EUECuttingPlaneParams}, eue_max::Float64)
+end
 
-        n_planes = length(eue_params)
+eue_internal(constrs::EUEConstraints) =
+    maximum(value(eue_est) for eue_est in constrs.eue_estimators; init=0.)
 
-        eue = @variable(m, lower_bound = 0, base_name="eue[$invyear]")
-        eue_max = @constraint(m, eue <= eue_max, base_name="eue_max[$invyear]")
+struct EUEParameters <: AdequacyParameters
+    planes::Vector{EUECuttingPlaneParams}
+    eue_max::Float64 # in powerunits_MW
 
-        estimators = [eue_estimate(params, builds, invyear) for params in eue_params]
-
-        cuttingplanes = @constraint(m, [p in 1:n_planes],
-            eue >= estimators[p], base_name="eue_cuttingplane[$invyear]")
-
-        new(eue_params, eue, eue_max, estimators, cuttingplanes)
-
+    function EUEParameters(eue_max::Float64)
+        return new(EUECuttingPlaneParams[], eue_max)
     end
 
 end
 
-eue_internal(rc::ReliabilityConstraints) =
-    maximum(value(eue_est) for eue_est in rc.eue_estimators; init=0.)
+function adequacy_constraints(
+    m::JuMP.Model, builds::SystemExpansion,
+    invyear::Int, eue_params::EUEParameters)
+
+    n_planes = length(eue_params.planes)
+
+    eue = @variable(m, lower_bound = 0, base_name="eue[$invyear]")
+    eue_max = @constraint(m, eue <= eue_params.eue_max, base_name="eue_max[$invyear]")
+
+    eue_estimators = [eue_estimate(plane, builds, invyear)
+                      for plane in eue_params.planes]
+
+    eue_cuttingplanes = @constraint(m, [p in 1:n_planes],
+        eue >= eue_estimators[p], base_name="eue_cuttingplane[$invyear]")
+
+    return EUEConstraints(
+        eue_params.planes, eue, eue_max, eue_estimators, eue_cuttingplanes)
+
+end

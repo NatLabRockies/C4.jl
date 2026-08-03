@@ -28,19 +28,23 @@ using ..Data
 using ..AdequacyModel
 using ..DispatchModel
 
+abstract type AdequacyParameters end
+abstract type AdequacyConstraints end
+
 include("thermal.jl")
 include("variable.jl")
 include("storage.jl")
 
 include("build.jl")
 
-include("riskestimates.jl")
+include("adequacyconstraints/eue.jl")
 
-export ExpansionProblem, EUECuttingPlaneParams, warmstart_builds!, solve!,
+export ExpansionProblem, EUEParameters, EUECuttingPlaneParams,
+       warmstart_builds!, solve!,
        capex, opex, cost, lcoe, co2_offset_cost, emissions_intensity,
        nullestimator, neues_internal
 
-mutable struct ExpansionProblem
+mutable struct ExpansionProblem{T <: AdequacyConstraints}
 
     model::JuMP.Model
 
@@ -51,13 +55,12 @@ mutable struct ExpansionProblem
     # Store one DispatchSequence per investment year
     dispatches::Vector{DispatchSequence{SystemExpansion}} # n_investment_years
 
-    reliabilityconstraints::Vector{ReliabilityConstraints}
+    adequacyconstraints::Vector{T} # n_investment_years
 
     function ExpansionProblem(
         system::SystemParams,
         chronologies::Vector{DispatchProxyMappings},
-        riskparams::Vector{Vector{EUECuttingPlaneParams}},
-        eue_max::Vector{Float64}, # annualized powerunits_MWh
+        riskparams::Vector{T},
         optimizer;
         co2_intensity_max::Vector{Float64}=Float64[], # kg/MWh
         co2_offset_price::Float64=NaN, # $/tonne CO2
@@ -65,16 +68,16 @@ mutable struct ExpansionProblem
         unit_commitment::Bool=true,
         wacc::Float64=0.,
         npv_year::Int=Int(first(system.times.investment_years))
-    )
+    ) where T <: AdequacyParameters
 
        n_years_investment = n_investment_years(system.times)
        length(chronologies) == n_years_investment ||
             error("Nummber of time period dispatch proxy assignments does not match " *
                   "number of system investment years")
 
-       length(eue_max) == n_years_investment ||
-            error("Nummber of EUE caps provided does not match " *
-                  "number of system investment years")
+       length(riskparams) == n_years_investment ||
+            error("Nummber of adequacy constraint parameterizations provided " *
+                  "does not match number of system investment years")
 
        iszero(length(co2_intensity_max)) ||
        length(co2_intensity_max) == n_years_investment ||
@@ -103,9 +106,11 @@ mutable struct ExpansionProblem
                              unit_commitment=unit_commitment)
             for (i, chronology) in enumerate(chronologies)]
 
-        reliabilityconstraints = [
-            ReliabilityConstraints(m, builds, i, riskparams[i], eue_max[i])
+        adequacyconstraints = [
+            adequacy_constraints(m, builds, i, riskparams[i])
             for i in eachindex(chronologies)]
+
+        TC = eltype(adequacyconstraints)
 
         @objective(m, Min,
             npv_capex(builds, system.times, wacc=wacc, npv_year=npv_year) +
@@ -115,7 +120,7 @@ mutable struct ExpansionProblem
                                  discount_rate=wacc, npv_year=npv_year)
             )
 
-        return new(m, system, builds, dispatches, reliabilityconstraints)
+        return new{TC}(m, system, builds, dispatches, adequacyconstraints)
 
     end
 
@@ -210,9 +215,10 @@ function emissions_intensity(prob::ExpansionProblem)
 
 end
 
-neues_internal(prob::ExpansionProblem) = [
-    eue_internal(rc) / avg_annual_energy(prob.system, i) * 1e6
-    for (i, rc) in enumerate(prob.reliabilityconstraints)]
+neues_internal(prob::ExpansionProblem{EUEConstraints}) = [
+    eue_internal(constrs) / avg_annual_energy(prob.system, i) * 1e6
+    for (i, constrs) in enumerate(prob.adequacyconstraints)]
+
 
 function warmstart_builds!(prob::ExpansionProblem, prev_prob::ExpansionProblem)
     warmstart_builds!.(prob.builds.thermaltechs, prev_prob.builds.thermaltechs)
