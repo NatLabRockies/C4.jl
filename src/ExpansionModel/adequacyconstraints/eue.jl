@@ -133,7 +133,7 @@ function cuttingplane(
 
 end
 
-struct ReliabilityConstraints
+struct EUEConstraints <: AdequacyConstraints
 
     eue_params::Vector{EUECuttingPlaneParams}
 
@@ -141,21 +141,31 @@ struct ReliabilityConstraints
     eue_max::JuMP_LessThanConstraintRef
     eue_cuttingplanes::Vector{JuMP_GreaterThanConstraintRef}
 
-    function ReliabilityConstraints(
-        m::JuMP.Model, builds::SystemExpansion,
-        eue_params::Vector{EUECuttingPlaneParams}, eue_max::Float64)
+end
 
-        eue = @variable(m, lower_bound = 0)
-        JuMP.set_name(eue, "eue")
+struct EUEParameters <: AdequacyParameters
+    planes::Vector{EUECuttingPlaneParams}
+    eue_max::Float64 # in powerunits_MW
 
-        eue_max = @constraint(m, eue <= eue_max)
-        JuMP.set_name(eue_max, "eue_max")
-
-        eue_cuttingplanes = [cuttingplane(m, eue, params, builds)
-                             for params in eue_params]
-
-        new(eue_params, eue, eue_max, eue_cuttingplanes)
-
+    function EUEParameters(eue_max::Float64)
+        return new(EUECuttingPlaneParams[], eue_max)
     end
+
+end
+
+function adequacy_constraints(
+    m::JuMP.Model, builds::SystemExpansion, eue_params::EUEParameters)
+
+    eue = @variable(m, lower_bound = 0)
+    JuMP.set_name(eue, "eue")
+
+    eue_max = @constraint(m, eue <= eue_params.eue_max)
+    JuMP.set_name(eue_max, "eue_max")
+
+    eue_cuttingplanes = [cuttingplane(m, eue, params, builds)
+                         for params in eue_params.planes]
+
+    return EUEConstraints(
+        eue_params.planes, eue, eue_max, eue_cuttingplanes)
 
 end

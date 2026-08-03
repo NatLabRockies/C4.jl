@@ -28,7 +28,6 @@ timestamp = Dates.format(now(), "yyyymmddHHMMSS")
 
 fullchrono = fullchronologyperiods(sys, daylength=2)
 repeatedchrono = singleperiod(sys, daylength=2)
-null_eue = EUECuttingPlaneParams[]
 
 voll = 9000.
 
@@ -39,10 +38,10 @@ solve!(pcm)
 # unnormalized EUE and powerunits_MW!
 # Nonzero values need to be scaled appropriately
 # Here region.demand is already in powerunits_MW
-max_eue = total_demand(sys) / 10_000 # 100 ppm
+max_eue = total_demand(sys) / 100_000 # 10 ppm
+max_neue = 10. # for iterate_neue
 
-# For iterate_ra_cem, which takes NEUE
-max_neue = 10.
+eue_params = EUEParameters(max_eue)
 
 ram = AdequacyProblem(sys, optimizer, samples=1000)
 ram_results = solve(ram)
@@ -54,7 +53,7 @@ println("EUEs: ", ram_results.eues)
 
 println("\n\nCopper sheet system, repeated chronology, manual iteration")
 
-cem = ExpansionProblem(sys, repeatedchrono, null_eue, max_eue, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, optimizer)
 write_to_file(cem.model, "model.lp")
 solve!(cem)
 
@@ -68,9 +67,9 @@ println("\nNEUE = ", neue(ram_results))
 println("LOLPs: ", ram_results.lolps)
 println("EUEs: ", ram_results.eues)
 
-eue_params = [EUECuttingPlaneParams(cem.builds, ram_results)]
+push!(eue_params.planes, EUECuttingPlaneParams(cem.builds, ram_results))
 
-cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, optimizer)
 write_to_file(cem.model, "model_riskcurves_1.lp")
 solve!(cem)
 
@@ -84,9 +83,9 @@ println("\nNEUE = ", neue(ram_results))
 println("LOLPs: ", ram_results.lolps)
 println("EUEs: ", ram_results.eues)
 
-push!(eue_params, EUECuttingPlaneParams(cem.builds, ram_results))
+push!(eue_params.planes, EUECuttingPlaneParams(cem.builds, ram_results))
 
-cem = ExpansionProblem(sys, repeatedchrono, eue_params, max_eue, optimizer)
+cem = ExpansionProblem(sys, repeatedchrono, eue_params, optimizer)
 write_to_file(cem.model, "model_riskcurves_2.lp")
 solve!(cem)
 
@@ -101,7 +100,7 @@ println("LOLPs: ", ram_results.lolps)
 println("EUEs: ", ram_results.eues)
 
 println("\nSingle-region Iterative CEM:")
-cem, ram, pcm = iterate_ra_cem(
+cem, ram, pcm = iterate_neue(
     sys, repeatedchrono, max_neue, optimizer,
     nsamples=100_000, check_dispatch=false, check_dispatch_voll=voll,
     outfile=timestamp * ".db")

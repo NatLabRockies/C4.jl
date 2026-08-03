@@ -23,18 +23,22 @@ using ..Data
 using ..AdequacyModel
 using ..DispatchModel
 
+abstract type AdequacyParameters end
+abstract type AdequacyConstraints end
+
 include("thermal.jl")
 include("variable.jl")
 include("storage.jl")
 
 include("build.jl")
 
-include("riskestimates.jl")
+include("adequacyconstraints/eue.jl")
 
-export ExpansionProblem, EUECuttingPlaneParams, warmstart_builds!, solve!,
+export ExpansionProblem, EUEParameters, EUECuttingPlaneParams,
+       warmstart_builds!, solve!,
        capex, opex, cost, lcoe, nullestimator
 
-mutable struct ExpansionProblem
+mutable struct ExpansionProblem{T <: AdequacyConstraints}
 
     model::JuMP.Model
 
@@ -44,13 +48,12 @@ mutable struct ExpansionProblem
 
     economicdispatch::DispatchSequence{SystemExpansion}
 
-    reliabilityconstraints::ReliabilityConstraints
+    adequacyconstraints::T
 
     function ExpansionProblem(
         system::SystemParams,
         chronology::TimeProxyAssignment,
-        riskparams::Vector{EUECuttingPlaneParams},
-        eue_max::Float64, # in powerunits_MWh
+        riskparams::AdequacyParameters,
         optimizer)
 
         n_timesteps = length(system.timesteps)
@@ -64,14 +67,14 @@ mutable struct ExpansionProblem
 
         economicdispatch = DispatchSequence(m, builds, chronology)
 
-        reliabilityconstraints = ReliabilityConstraints(
-            m, builds, riskparams, eue_max)
+        adequacyconstraints = adequacy_constraints(m, builds, riskparams)
+        T = typeof(adequacyconstraints)
 
         opex_scalar = 8766 / n_timesteps
 
         @objective(m, Min, cost(builds) + opex_scalar * cost(economicdispatch))
 
-        return new(m, system, builds, economicdispatch, reliabilityconstraints)
+        return new{T}(m, system, builds, economicdispatch, adequacyconstraints)
 
     end
 
