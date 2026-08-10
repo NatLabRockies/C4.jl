@@ -1,0 +1,9 @@
+using Documenter, C4
+
+makedocs(sitename="C4.jl", remotes=nothing, pages = [
+    "Home" => "index.md",
+    "Installation" => "installation.md",
+    "Quick Start" => "quickstart.md",
+    "Input Data Format" => "inputdata.md",
+    "Model Architecture" => "architecture.md"
+])

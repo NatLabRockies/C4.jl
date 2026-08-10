@@ -1,3 +1,4 @@
 *.db
 *.lp
 Manifest.toml
+docs/build

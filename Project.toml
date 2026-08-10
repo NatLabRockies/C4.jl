@@ -21,4 +21,4 @@ Random = "1.11.0"
 Random123 = "1.7.1"
 
 [workspace]
-projects = ["test"]
+projects = ["test", "docs"]
