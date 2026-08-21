@@ -6,7 +6,7 @@ using C4.DispatchModel
 using C4.ExpansionModel
 
 import ..store, ..powerunits_MW
-import C4.ExpansionModel: EUECuttingPlaneParams
+import C4.ExpansionModel: EUECuttingPlaneParams, ELCCCuttingPlaneParams
 
 import Dates: Date, now
 import DBInterface
@@ -14,9 +14,10 @@ import DelimitedFiles: writedlm
 import DuckDB
 import JuMP: value
 
-export iterate_neue, sweep_iterate_neue
+export iterate_neue, sweep_iterate_neue, sweep_iterate_elcc
 
 include("iterate_neue.jl")
+include("iterate_elcc.jl")
 
 function add_stressperiod(
     sys::SystemParams, invyear::Int,

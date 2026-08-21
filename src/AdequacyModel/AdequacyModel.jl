@@ -17,7 +17,7 @@ using ..Data
 import ..powerunits_MW, ..maxpower, ..maxenergy, ..N_HOURS_IN_DAY,
        ..JuMP_LessThanConstraintRef, ..JuMP_EqualToConstraintRef, ..solve!
 
-export AdequacyProblem, AdequacyResult, solve, neue, neues,
+export AdequacyProblem, AdequacyResult, solve, neue, neues, elcc,
     neue_estimates, eue_estimates, lole_estimates,
     neue_estimate, eue_estimate, lole_estimate
 
@@ -426,6 +426,7 @@ neue_estimate(res::AdequacyResult, i::Int) =
 neue_estimates(res::AdequacyResult) =
     [neue_estimate(res, i) for i in 1:n_investment_years(res.times)]
 
+include("elcc.jl")
 include("export.jl")
 
 end

@@ -8,7 +8,7 @@ using C4.ExpansionModel
 using C4.IterationModel
 
 import C4: store, powerunits_MW
-import C4.ExpansionModel: cost_capex, cost_fom
+import C4.ExpansionModel: cost_capex, cost_fom, EUECuttingPlaneParams
 import C4.DispatchModel: generation_cost, co2_offset_cost,
                          DispatchDay, DispatchProxyMapping, DispatchProxyMappings
 
@@ -160,3 +160,8 @@ println("2050 Carbon Offset Cost (included in opex): ", value(co2_offset_cost(pc
 sweep_iterate_neue(
     sys, fullchronos, [40., 20, 10, 5, 2.5], optimizer,
     nsamples=100_000, outfile_prefix=timestamp * "_neue")
+
+sweep_iterate_elcc(
+    sys, fullchrono, [60., 65, 70, 75], optimizer,
+    elcc_neue_target=10.,
+    nsamples=100_000, outfile_prefix=timestamp * "_elcc")

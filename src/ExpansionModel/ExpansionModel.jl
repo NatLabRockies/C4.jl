@@ -31,6 +31,9 @@ using ..DispatchModel
 abstract type AdequacyParameters end
 abstract type AdequacyConstraints end
 
+# (JuMP.Model, SystemExpansion, AdequacyParameters) -> AdequacyConstraints
+function adequacy_constraints end
+
 include("thermal.jl")
 include("variable.jl")
 include("storage.jl")
@@ -38,8 +41,9 @@ include("storage.jl")
 include("build.jl")
 
 include("adequacyconstraints/eue.jl")
+include("adequacyconstraints/elcc_surface.jl")
 
-export ExpansionProblem, EUEParameters, EUECuttingPlaneParams,
+export ExpansionProblem, EUEParameters, ELCCSurfaceParameters,
        warmstart_builds!, solve!,
        capex, opex, cost, lcoe, co2_offset_cost, emissions_intensity,
        nullestimator, neues_internal
