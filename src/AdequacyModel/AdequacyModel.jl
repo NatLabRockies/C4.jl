@@ -16,7 +16,7 @@ using ..Data
 import ..powerunits_MW, ..ThermalTechnology, ..maxpower, ..maxenergy,
        ..JuMP_LessThanConstraintRef, ..JuMP_EqualToConstraintRef, ..solve!
 
-export AdequacyProblem, AdequacyResult, solve, neue, show_neues
+export AdequacyProblem, AdequacyResult, solve, elcc, neue, show_neues
 
 include("AdequacyParams.jl")
 include("AdequacyOptimization.jl")
@@ -196,7 +196,9 @@ function solve(prob::AdequacyProblem)
 end
 
 neue(res::AdequacyResult) = sum(res.eues) / sum(res.demand) * 1_000_000
+eue_estimate(res::AdequacyResult) = (sum(res.eues), .0001) # TODO - add stderr calc
 
+include("elcc.jl")
 include("export.jl")
 
 end

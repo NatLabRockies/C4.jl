@@ -8,6 +8,7 @@ using C4.ExpansionModel
 using C4.IterationModel
 
 import C4: store, powerunits_MW
+import C4.ExpansionModel: EUECuttingPlaneParams
 
 using DuckDB
 
@@ -101,9 +102,24 @@ println("EUEs: ", ram_results.eues)
 
 println("\nSingle-region Iterative CEM:")
 cem, ram, pcm = iterate_neue(
-    sys, repeatedchrono, max_neue, optimizer,
-    nsamples=100_000, check_dispatch=false, check_dispatch_voll=voll,
-    outfile=timestamp * ".db")
+    sys, fullchrono, max_neue, optimizer,
+    nsamples=100_000, outfile=timestamp * "_neue.db")
+
+sys_built = SystemParams(cem)
+display(sys_built)
+println("LOLPs: ", ram.lolps)
+println("EUEs: ", ram.eues)
+
+println("Capex: ", value(capex(cem)))
+println("Opex: ", value(opex(cem)))
+println("System Cost: ", value(cost(cem)))
+println("System LCOE: ", value(lcoe(cem)))
+
+cem, ram = iterate_elcc(
+    sys, fullchrono, max_neue, optimizer,
+    nsamples=100_000, outfile=timestamp * "_elcc.db")
+
+write_to_file(cem.model, "elcc_model.lp")
 
 sys_built = SystemParams(cem)
 display(sys_built)
