@@ -2,7 +2,7 @@
 
 C4's data model represents power system resources in three broad classes: _variable_ generating units, _thermal_ generating units, and _storage_ units. Within these classes, it futher differentiates between _candidate_ resources (which require both capital investment and operating data) and _existing_ resources (which only require operating data). Finally, these broad classes are populated by individual _technologies_, each of which can exist at multiple different _sites_. Data are specified in relation to a specific site or technology.
 
-Site and technology properties are represented in one of three ways based on their evolution (or not) across time. Some properties are _static_, meaning they don't change across time, and are defined directly in relation to a technology or site. Other properties change across investment periods, but are static within a single period. Finally, properties can change across operating periods (i.e. hourly).
+Site and technology properties are represented in one of three ways based on their evolution (or not) across time. Some properties are _static_, meaning they don't change across time, and are defined directly in relation to a technology or site. Other properties change across investment periods, but are static across operating periods within that investment period. Finally, some properties change across operating periods (i.e. hourly).
 
 ```@raw html
 <div id="datatree">
