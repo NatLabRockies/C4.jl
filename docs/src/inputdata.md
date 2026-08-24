@@ -9,7 +9,7 @@ Site and technology properties are represented in one of three ways based on the
 <ul><li id="datatree-root">/<ul>
     <li class="file">
         demand.csv
-        <span class="note">operating periods</span>
+        <span class="op-periods">operating periods</span>
     </li>
     <li class="folder">
         fuel
@@ -23,7 +23,7 @@ Site and technology properties are represented in one of three ways based on the
             </li>
             <li class="file">
                 fuel_cost.csv
-                <span class="note">investment periods</span>
+                <span class="inv-periods">investment periods</span>
             </li>
         </ul>
     </li>
@@ -49,15 +49,15 @@ Site and technology properties are represented in one of three ways based on the
                         </ul>
                     <li class="file">
                         tech_rating.csv
-                        <span class="note">operating periods</span>
+                        <span class="op-periods">operating periods</span>
                     </li>
                     <li class="file">
                         tech_cost_fom.csv
-                        <span class="note">investment periods</span>
+                        <span class="inv-periods">investment periods</span>
                     </li>
                     <li class="file">
                         tech_cost_vom.csv
-                        <span class="note">investment periods</span>
+                        <span class="inv-periods">investment periods</span>
                     </li>
                     <li class="file">
                         sites.csv
@@ -67,15 +67,15 @@ Site and technology properties are represented in one of three ways based on the
                         </ul>
                     <li class="file">
                         site_units.csv
-                        <span class="note">investment periods</span>
+                        <span class="inv-periods">investment periods</span>
                     </li>
                     <li class="file">
                         site_mttf.csv
-                        <span class="note">operating periods</span>
+                        <span class="op-periods">operating periods</span>
                     </li>
                     <li class="file">
                         site_mttr.csv
-                        <span class="note">operating periods</span>
+                        <span class="op-periods">operating periods</span>
                     </li>
                 </ul>
             </li>
@@ -98,38 +98,190 @@ Site and technology properties are represented in one of three ways based on the
                         </ul>
                     <li class="file">
                         tech_max_units.csv
-                        <span class="note">investment periods</span>
+                        <span class="inv-periods">investment periods</span>
                     </li>
                     <li class="file">
                         tech_rating.csv
-                        <span class="note">operating periods</span>
+                        <span class="op-periods">operating periods</span>
                     </li>
                     <li class="file">
                         tech_mttf.csv
-                        <span class="note">operating periods</span>
+                        <span class="op-periods">operating periods</span>
                     </li>
                     <li class="file">
                         tech_mttr.csv
-                        <span class="note">operating periods</span>
+                        <span class="op-periods">operating periods</span>
                     </li>
                     <li class="file">
                         tech_cost_capital.csv
-                        <span class="note">investment periods</span>
+                        <span class="inv-periods">investment periods</span>
                     </li>
                     <li class="file">
                         tech_cost_fom.csv
-                        <span class="note">investment periods</span>
+                        <span class="inv-periods">investment periods</span>
                     </li>
                     <li class="file">
                         tech_cost_vom.csv
-                        <span class="note">investment periods</span>
+                        <span class="inv-periods">investment periods</span>
                     </li>
                 </ul>
             </li>
         </ul>
     </li>
     <li class="folder">
-        ...
+        variable
+        <ul>
+            <li class="folder">
+                existing
+                <ul>
+                    <li class="file">
+                        techs.csv
+                        <ul>
+                            <li class="id">tech</li>
+                            <li>category</li>
+                        </ul>
+                    <li class="file">
+                        tech_cost_fom.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        tech_cost_vom.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        sites.csv
+                        <ul>
+                            <li>tech</li>
+                            <li class="id">site</li>
+                        </ul>
+                    <li class="file">
+                        site_availability.csv
+                        <span class="op-periods">operating periods</span>
+                    </li>
+                    <li class="file">
+                        site_capacity.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                </ul>
+            </li>
+            <li class="folder">
+                candidate
+                <ul>
+                    <li class="file">
+                        techs.csv
+                        <ul>
+                            <li class="id">tech</li>
+                            <li>category</li>
+                        </ul>
+                    <li class="file">
+                        tech_cost_capital.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        tech_cost_fom.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        tech_cost_vom.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        sites.csv
+                        <ul>
+                            <li>tech</li>
+                            <li class="id">site</li>
+                        </ul>
+                    <li class="file">
+                        site_availability.csv
+                        <span class="op-periods">operating periods</span>
+                    </li>
+                    <li class="file">
+                        site_capacity_max.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                </ul>
+            </li>
+        </ul>
+    </li>
+    <li class="folder">
+        storage
+        <ul>
+            <li class="folder">
+                existing
+                <ul>
+                    <li class="file">
+                        techs.csv
+                        <ul>
+                            <li class="id">tech</li>
+                            <li>category</li>
+                            <li>duration</li>
+                            <li>roundtrip_efficiency</li>
+                        </ul>
+                    <li class="file">
+                        tech_cost_fom_power.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        tech_cost_fom_energy.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        tech_cost_vom.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        sites.csv
+                        <ul>
+                            <li>tech</li>
+                            <li class="id">site</li>
+                        </ul>
+                    <li class="file">
+                        site_capacity.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                </ul>
+            </li>
+            <li class="folder">
+                candidate
+                <ul>
+                    <li class="file">
+                        techs.csv
+                        <ul>
+                            <li class="id">tech</li>
+                            <li>category</li>
+                            <li>roundtrip_efficiency</li>
+                        </ul>
+                    <li class="file">
+                        tech_cost_capital_power.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        tech_cost_capital_energy.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        tech_cost_fom_power.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        tech_cost_fom_energy.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        tech_cost_vom.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        tech_power_max.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                    <li class="file">
+                        tech_energy_max.csv
+                        <span class="inv-periods">investment periods</span>
+                    </li>
+                </ul>
+            </li>
+        </ul>
     </li>
 </ul>
 </div>

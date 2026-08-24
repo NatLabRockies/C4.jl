@@ -73,7 +73,21 @@
 }
 
 #datatree span.note {
-    color: #1c439e;
+    color: #808080;
+    font-size: smaller;
+    font-style: italic;
+    font-weight: normal;
+}
+
+#datatree span.inv-periods {
+    color: #11CC11;
+    font-size: smaller;
+    font-style: italic;
+    font-weight: normal;
+}
+
+#datatree span.op-periods {
+    color: #1c83de;
     font-size: smaller;
     font-style: italic;
     font-weight: normal;
