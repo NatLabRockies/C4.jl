@@ -161,26 +161,53 @@ function iterate_ra_cem(
 
     end
 
-    pcm = nothing
+    pcms = nothing
 
     if (aspp || endog_risk) && check_dispatch
 
         pcm_start = now()
         n_iters += 1
-        fullchrono = fullchronologyperiods(sys_built)
-        pcm = DispatchProblem(sys_built, 1, fullchrono, optimizer, check_dispatch_voll)
-        solve!(pcm)
+
+        # Only final investment year; each dispatch year solved as a separate LP
+        i_last = lastindex(base_chronologies)
+        pcms = DispatchProblem[]
+        for dy in 1:n_dispatch_years(sys_built.times)
+
+            yearchrono = fullchronologyperiods(sys_built, dy)
+
+            pcm = DispatchProblem(
+                sys_built, i_last, yearchrono, optimizer;
+                voll=check_dispatch_voll,
+                unit_commitment=false)
+
+            solve!(pcm)
+            push!(pcms, pcm)
+
+        end
+
         pcm_end = now()
 
         if persist
+
+            store_start = now()
+
             store_iteration(con, n_iters)
             store_iteration_step(con, n_iters, "dispatch", pcm_start => pcm_end)
-            store(con, n_iters, pcm.dispatch)
+
+            for pcm in pcms
+                store(con, n_iters, i_last, pcm.dispatch, pcm.system.times)
+            end
+
+            store_end = now()
+
+            store_iteration_step(con, n_iters, "persistence", store_start => store_end)
+            DBInterface.execute(con, "CHECKPOINT")
+
         end
 
     end
 
-    return cem, ram_result, pcm
+    return cem, ram_result, pcms
 
 end
 
