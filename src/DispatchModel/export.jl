@@ -146,7 +146,7 @@ function store(appender::DispatchAppender, iter::Int, i::Int,
         DuckDB.append(appender.demands, invyear)
         DuckDB.append(appender.demands, dispatch.period.name)
         DuckDB.append(appender.demands, h)
-        DuckDB.append(appender.demands, demand(dispatch.system, 1, d, h) * powerunits_MW)
+        DuckDB.append(appender.demands, demand(dispatch.system, i, d, h) * powerunits_MW)
         DuckDB.end_row(appender.demands)
 
         for gen in dispatch.thermaltechs

@@ -167,16 +167,33 @@ function iterate_ra_cem(
 
         pcm_start = now()
         n_iters += 1
-        fullchrono = fullchronologyperiods(sys_built)
-        pcm = DispatchProblem(sys_built, 1, fullchrono, optimizer, check_dispatch_voll)
-        solve!(pcm)
-        pcm_end = now()
 
         if persist
             store_iteration(con, n_iters)
-            store_iteration_step(con, n_iters, "dispatch", pcm_start => pcm_end)
-            store(con, n_iters, pcm.dispatch)
         end
+
+        pcms = DispatchProblem[]
+        for i in eachindex(base_chronologies)
+            fullchrono = fullchronologyperiods(sys_built, i)
+            # LP relaxation only: full-year MILP is intractable
+            pcm_i = DispatchProblem(sys_built, i, fullchrono, optimizer;
+                                    voll=check_dispatch_voll,
+                                    unit_commitment=false)
+            solve!(pcm_i)
+            push!(pcms, pcm_i)
+            if persist
+                store(con, n_iters, i, pcm_i.dispatch, pcm_i.system.times)
+            end
+        end
+
+        pcm_end = now()
+
+        if persist
+            store_iteration_step(con, n_iters, "dispatch", pcm_start => pcm_end)
+            DBInterface.execute(con, "CHECKPOINT")
+        end
+
+        pcm = pcms
 
     end
 
