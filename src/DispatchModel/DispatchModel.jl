@@ -29,7 +29,7 @@ include("sequencing.jl")
 export DispatchProblem, DispatchSequence, DispatchDay, DispatchProxyMapping,
        singleperiod, seasonalperiods, monthlyperiods, weeklyperiods,
        seasonalperiods_byyear, monthlyperiods_byyear, weeklyperiods_byyear,
-       dailyperiods, fullchronologyperiods,
+       dailyperiods, fullchronologyperiods, dispatchyearperiods,
        n_decision_days, n_represented_days, n_decision_hours,
        n_represented_hours, cost, co2, co2_offset_cost
 

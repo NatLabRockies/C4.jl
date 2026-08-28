@@ -172,17 +172,18 @@ function iterate_ra_cem(
             store_iteration(con, n_iters)
         end
 
+        # Only final investment year; each dispatch year solved as a separate LP
+        i_last = lastindex(base_chronologies)
         pcms = DispatchProblem[]
-        for i in eachindex(base_chronologies)
-            fullchrono = fullchronologyperiods(sys_built, i)
-            # LP relaxation only: full-year MILP is intractable
-            pcm_i = DispatchProblem(sys_built, i, fullchrono, optimizer;
+        for dy in 1:n_dispatch_years(sys_built.times)
+            yearchrono = dispatchyearperiods(sys_built, i_last, dy)
+            pcm_i = DispatchProblem(sys_built, i_last, yearchrono, optimizer;
                                     voll=check_dispatch_voll,
                                     unit_commitment=false)
             solve!(pcm_i)
             push!(pcms, pcm_i)
             if persist
-                store(con, n_iters, i, pcm_i.dispatch, pcm_i.system.times)
+                store(con, n_iters, i_last, pcm_i.dispatch, pcm_i.system.times)
             end
         end
 
