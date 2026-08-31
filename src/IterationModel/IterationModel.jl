@@ -24,7 +24,7 @@ function iterate_ra_cem(
     co2_offset_price::Float64=9999., # $/tonne CO2
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
-    check_dispatch::Bool=false, check_dispatch_voll::Real=NaN,
+    check_dispatch_invyears::Vector{Int}=Int[], check_dispatch_voll::Real=NaN,
     unit_commitment::Bool=true, discount_rate::Float64=0.,
     cem_voll::Float64=NaN)
 
@@ -163,20 +163,18 @@ function iterate_ra_cem(
 
     pcms = nothing
 
-    if (aspp || endog_risk) && check_dispatch
+    if (aspp || endog_risk) && !isempty(check_dispatch_invyears)
 
         pcm_start = now()
         n_iters += 1
 
-        # Only final investment year; each dispatch year solved as a separate LP
-        i_last = lastindex(base_chronologies)
         pcms = DispatchProblem[]
-        for dy in 1:n_dispatch_years(sys_built.times)
+        for i in check_dispatch_invyears, dy in 1:n_dispatch_years(sys_built.times)
 
             yearchrono = fullchronologyperiods(sys_built, dy)
 
             pcm = DispatchProblem(
-                sys_built, i_last, yearchrono, optimizer;
+                sys_built, i, yearchrono, optimizer;
                 voll=check_dispatch_voll,
                 unit_commitment=false)
 
@@ -195,7 +193,7 @@ function iterate_ra_cem(
             store_iteration_step(con, n_iters, "dispatch", pcm_start => pcm_end)
 
             for pcm in pcms
-                store(con, n_iters, i_last, pcm.dispatch, pcm.system.times)
+                store(con, n_iters, pcm.invyear, pcm.dispatch, pcm.system.times)
             end
 
             store_end = now()
