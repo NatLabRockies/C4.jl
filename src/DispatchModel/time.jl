@@ -15,16 +15,25 @@ end
 struct DispatchProxyMapping
 
     days::Vector{DispatchDay} # set of DispatchDays to be included in optimization
-    mapping::Vector{Int} # mapping from all days into DispatchDays set
+    range::UnitRange{Int} # which subset of all days to consider
+    mapping::Vector{Int} # mapping from days in range into DispatchDays set
 
-    function DispatchProxyMapping(days::Vector{DispatchDay}, mapping::Vector{Int})
+    function DispatchProxyMapping(
+        days::Vector{DispatchDay}, mapping::Vector{Int},
+        range::UnitRange{Int}=1:length(mapping))
 
         n_days = length(days)
+
+        length(mapping) == length(range) ||
+                error("Mapping length must match provided day range")
 
         all(d -> 1 <= d <= n_days, mapping) ||
                 error("Invalid day index in day mapping")
 
-        new(days, mapping)
+        all(day -> day.dispatchday_idx in range, days) ||
+                error("DispatchDays must be within the provided range")
+
+        new(days, range, mapping)
 
     end
 

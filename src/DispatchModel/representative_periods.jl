@@ -61,8 +61,25 @@ seasonalperiods_byyear(sys::SystemParams, invyear::Int) =
 weeklyperiods_byyear(sys::SystemParams, invyear::Int) =
     medoid_timegrouping(sys, invyear, (y, d) -> "Y$y W$(daytoweek(d))")
 
-fullchronologyperiods(sys::SystemParams, invyear::Int) =
-    medoid_timegrouping(sys, invyear, (y, d) -> "Y$y D$d")
+function fullchronologyperiods(sys::SystemParams, dispyear::Int=0)
+
+    d_start, d_end = if dispyear > 0
+        n_days = sys.times.dispatch_daycount[dispyear]
+        dayidx(dispyear, 1, sys.times), dayidx(dispyear, n_days, sys.times)
+    else
+        1, n_dispatch_days(sys.times)
+    end
+
+    range = d_start:d_end
+
+    days = [
+        ((y, doy) = year_dayofyear(d, sys.times);
+         DispatchDay("Y$y D$doy", d, sys.times))
+     for d in range]
+
+    return DispatchProxyMapping(days, collect(range), range)
+
+end
 
 daytoweek(d::Int) = string(div(d, 7) % 52 + 1)
 

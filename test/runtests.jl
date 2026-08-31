@@ -30,8 +30,7 @@ display(sys)
 
 timestamp = Dates.format(now(), "yyyymmddHHMMSS")
 
-fullchrono = [fullchronologyperiods(sys, i)
-              for i in eachindex(sys.times.investment_years)]
+fullchrono = fullchronologyperiods(sys)
 
 repeatedchrono = [singleperiod(sys, i)
                   for i in eachindex(sys.times.investment_years)]
@@ -40,7 +39,7 @@ null_eue = [EUECuttingPlaneParams[], EUECuttingPlaneParams[]]
 
 voll = 9000.
 
-pcm = DispatchProblem(sys, 1, first(fullchrono), optimizer, voll=voll)
+pcm = DispatchProblem(sys, 1, fullchrono, optimizer, voll=voll)
 solve!(pcm)
 
 # Note that ExpansionProblem takes its target in terms of
@@ -108,7 +107,7 @@ println("\nNEUEs = ", neues(ram_results))
 println("\nSingle-region Iterative CEM:")
 cem, ram, pcm = iterate_ra_cem(
     sys, repeatedchrono, max_neue, optimizer,
-    nsamples=100_000, check_dispatch=false, check_dispatch_voll=voll,
+    nsamples=100_000, check_dispatch=true, check_dispatch_voll=voll,
     outfile=timestamp * ".db", unit_commitment=true,
     max_co2_intensity=50., co2_offset_price=100.)
 

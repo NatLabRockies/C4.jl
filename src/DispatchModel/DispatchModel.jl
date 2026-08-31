@@ -17,7 +17,7 @@ import ..DispatchableThermalTech, ..DispatchableVariableTech,
        ..variabletechs, ..storagetechs, ..thermaltechs,
        ..solve!, ..powerunits_MW, ..N_HOURS_IN_DAY, ..co2_offset_cost
 
-import ..Data: annualization_factor
+import ..Data: annualization_factor, dayidx
 
 using ..Data
 
