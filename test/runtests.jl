@@ -107,7 +107,7 @@ println("\nNEUEs = ", neues(ram_results))
 println("\nSingle-region Iterative CEM:")
 cem, ram, pcm = iterate_ra_cem(
     sys, repeatedchrono, max_neue, optimizer,
-    nsamples=100_000, check_dispatch=true, check_dispatch_voll=voll,
+    nsamples=100_000, check_dispatch_invyears=[1 ,2], check_dispatch_voll=voll,
     outfile=timestamp * ".db", unit_commitment=true,
     max_co2_intensity=50., co2_offset_price=100.)
 
