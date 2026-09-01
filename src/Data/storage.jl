@@ -40,11 +40,21 @@ struct StorageCandidateParams
     cost_vom::InvestmentDataArray{Float64} # $/MWh
     cost_fom_power::InvestmentDataArray{Float64} # $/MWh
     cost_fom_energy::InvestmentDataArray{Float64} # $/MWh
-    cost_capital_power::InvestmentDataArray{Float64} # annualized $/MW
-    cost_capital_energy::InvestmentDataArray{Float64} # annualized $/MWh
+    cost_overnightcapital_power::InvestmentDataArray{Float64} # annualized $/MW
+    cost_overnightcapital_energy::InvestmentDataArray{Float64} # annualized $/MWh
+
+    capital_recovery_period::Float64 # years
 
     power_max::InvestmentDataArray{Float64} # MW
     energy_max::InvestmentDataArray{Float64} # MWh
     # could do a duration_max too?
 
 end
+
+cost_capex_power(tech::StorageCandidateParams, invyear::Int, wacc::Float64) =
+    tech.cost_overnightcapital_power[invyear] *
+    financing_factor(wacc, tech.capital_recovery_period)
+
+cost_capex_energy(tech::StorageCandidateParams, invyear::Int, wacc::Float64) =
+    tech.cost_overnightcapital_energy[invyear] *
+    financing_factor(wacc, tech.capital_recovery_period)

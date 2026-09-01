@@ -42,11 +42,11 @@ function load_system(datadir::String, opex_endyears::Int)
     name = basename(datadir)
 
     demandpath = joinpath(datadir, "demand.csv")
-    data = readdlm(demandpath, ',')
+    demanddata = readdlm(demandpath, ',')
 
-    validate_invdata_columns(data, demandpath)
+    validate_invdata_columns(demanddata, demandpath)
 
-    idxs = get_dispatch_idxs(data)
+    idxs = get_dispatch_idxs(demanddata)
     invyears = unique(x[1] for x in idxs)
     n_dispyears = maximum(x[2] for x in idxs)
 
@@ -60,7 +60,7 @@ function load_system(datadir::String, opex_endyears::Int)
 
     check_dispatchidxs(idxs, times)
 
-    demand = shape_dispatchdata(Float64.(data[2:end, 5]) ./ powerunits_MW, times)
+    demand = shape_dispatchdata(Float64.(demanddata[2:end, 5]) ./ powerunits_MW, times)
 
     return SystemParams(
         name, times, demand,
@@ -200,7 +200,8 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
 
     validate_columns(techs,
         ["tech", "category", "fuel", "heat_rate", "startup_heat",
-         "unit_size", "min_gen", "max_ramp", "min_uptime", "min_downtime"],
+         "unit_size", "min_gen", "max_ramp", "min_uptime", "min_downtime",
+         "capital_recovery_period"],
         techspath)
 
     allunique(techs[2:end, 1]) ||
@@ -218,7 +219,7 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
 
         cost_vom = defaultinvestmentdata(system.times, 0.)
         cost_fom = defaultinvestmentdata(system.times, 0.)
-        cost_capital = defaultinvestmentdata(system.times, 0.)
+        cost_overnightcapital = defaultinvestmentdata(system.times, 0.)
 
         max_units = defaultinvestmentdata(system.times, 0)
 
@@ -229,6 +230,7 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
         max_ramp = Float64(techs[r, 8]) / powerunits_MW
         min_uptime = Int(techs[r, 9])
         min_downtime = Int(techs[r, 10])
+        capital_recovery_period = Float64(techs[r, 11])
 
         λ = defaultdispatchdata(system.times, 0.)
         μ = defaultdispatchdata(system.times, 1.)
@@ -237,7 +239,8 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
 
         tech = ThermalCandidateParams(
             techname, category, fuel, heat_rate, startup_heat,
-            cost_vom, cost_fom, cost_capital, max_units, unit_size, rating,
+            cost_vom, cost_fom, cost_overnightcapital, capital_recovery_period,
+            max_units, unit_size, rating,
             min_gen, max_ramp, min_uptime, min_downtime, λ, μ)
 
         push!(system.thermaltechs_candidate, tech)
@@ -251,7 +254,7 @@ function load_candidate_thermaltechs!(system::SystemParams, datadir::String)
         joinpath(datadir, "tech_cost_fom.csv"), :cost_fom, x -> x * powerunits_MW)
 
     load_investment_timeseries!(system, ThermalCandidateParams,
-        joinpath(datadir, "tech_cost_capital.csv"), :cost_capital, x -> x * powerunits_MW)
+        joinpath(datadir, "tech_cost_overnightcapital.csv"), :cost_overnightcapital, x -> x * powerunits_MW)
 
     load_investment_timeseries!(system, ThermalCandidateParams,
         joinpath(datadir, "tech_max_units.csv"), :max_units)
@@ -341,7 +344,7 @@ function load_candidate_variabletechs!(system::SystemParams, datadir::String)
     techspath = joinpath(datadir, "techs.csv")
     techs = readdlm(techspath, ',')
 
-    validate_columns(techs, ["tech", "category"], techspath)
+    validate_columns(techs, ["tech", "category", "capital_recovery_period"], techspath)
 
     allunique(techs[2:end, 1]) ||
         error("Duplicate technology names in $techspath")
@@ -350,14 +353,15 @@ function load_candidate_variabletechs!(system::SystemParams, datadir::String)
 
         techname = string(techs[r, 1])
         category = string(techs[r, 2])
+        capital_recovery_period = Float64(techs[r, 3])
 
-        cost_capital = defaultinvestmentdata(system.times, 0.)
+        cost_overnightcapital = defaultinvestmentdata(system.times, 0.)
         cost_vom = defaultinvestmentdata(system.times, 0.)
         cost_fom = defaultinvestmentdata(system.times, 0.)
 
         tech = VariableCandidateParams(
-            techname, category, cost_capital, cost_vom, cost_fom,
-            VariableCandidateSiteParams[])
+            techname, category, cost_overnightcapital, cost_vom, cost_fom,
+            capital_recovery_period, VariableCandidateSiteParams[])
 
         push!(system.variabletechs_candidate, tech)
 
@@ -370,7 +374,7 @@ function load_candidate_variabletechs!(system::SystemParams, datadir::String)
         joinpath(datadir, "tech_cost_fom.csv"), :cost_fom, x -> x * powerunits_MW)
 
     load_investment_timeseries!(system, VariableCandidateParams,
-        joinpath(datadir, "tech_cost_capital.csv"), :cost_capital, x -> x * powerunits_MW)
+        joinpath(datadir, "tech_cost_overnightcapital.csv"), :cost_overnightcapital, x -> x * powerunits_MW)
 
 end
 
@@ -493,7 +497,8 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
     techs = readdlm(techspath, ',')
 
     validate_columns(
-        techs, ["tech", "category", "roundtrip_efficiency"], techspath)
+        techs, ["tech", "category", "roundtrip_efficiency",
+                "capital_recovery_period"], techspath)
 
     allunique(techs[2:end, 1]) ||
         error("Duplicate technology names in $techspath")
@@ -504,12 +509,13 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
         category = string(techs[r, 2])
 
         roundtrip_efficiency = Float64(techs[r, 3])
+        capital_recovery_period = Float64(techs[r, 4])
 
         cost_vom = defaultinvestmentdata(system.times, 0.)
         cost_fom_power = defaultinvestmentdata(system.times, 0.)
         cost_fom_energy = defaultinvestmentdata(system.times, 0.)
-        cost_capital_power = defaultinvestmentdata(system.times, 0.)
-        cost_capital_energy = defaultinvestmentdata(system.times, 0.)
+        cost_overnightcapital_power = defaultinvestmentdata(system.times, 0.)
+        cost_overnightcapital_energy = defaultinvestmentdata(system.times, 0.)
 
         power_max = defaultinvestmentdata(system.times, 0.)
         energy_max = defaultinvestmentdata(system.times, 0.)
@@ -517,8 +523,8 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
         tech = StorageCandidateParams(
             techname, category, roundtrip_efficiency,
             cost_vom, cost_fom_power, cost_fom_energy,
-            cost_capital_power, cost_capital_energy,
-            power_max, energy_max)
+            cost_overnightcapital_power, cost_overnightcapital_energy,
+            capital_recovery_period, power_max, energy_max)
 
         push!(system.storagetechs_candidate, tech)
 
@@ -537,11 +543,11 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
         x -> x * powerunits_MW)
 
     load_investment_timeseries!(system, StorageCandidateParams,
-        joinpath(datadir, "tech_cost_capital_power.csv"), :cost_capital_power,
+        joinpath(datadir, "tech_cost_overnightcapital_power.csv"), :cost_overnightcapital_power,
         x -> x * powerunits_MW)
 
     load_investment_timeseries!(system, StorageCandidateParams,
-        joinpath(datadir, "tech_cost_capital_energy.csv"), :cost_capital_energy,
+        joinpath(datadir, "tech_cost_overnightcapital_energy.csv"), :cost_overnightcapital_energy,
         x -> x * powerunits_MW)
 
     load_investment_timeseries!(system, StorageCandidateParams,

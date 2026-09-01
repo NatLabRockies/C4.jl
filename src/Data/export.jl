@@ -48,6 +48,7 @@ function store(con::DuckDB.DB, sys::SystemParams)
         techtype TEXT REFERENCES techtypes (techtype)
     )")
 
+    # TODO: Add cost_fom?
     DBInterface.execute(con, "CREATE TABLE tech_costs (
         tech TEXT REFERENCES techs (tech),
         year INTEGER REFERENCES investment_years (year),
@@ -139,7 +140,7 @@ function store(
         DuckDB.append(appender.tech_costs, year)
         DuckDB.append(appender.tech_costs, nothing)
         DuckDB.append(appender.tech_costs, tech.cost_vom[y] / powerunits_MW)
-        DuckDB.append(appender.tech_costs, tech.cost_capital[y] / powerunits_MW)
+        DuckDB.append(appender.tech_costs, cost_capex(tech, y) / powerunits_MW)
         DuckDB.append(appender.tech_costs, nothing)
         DuckDB.end_row(appender.tech_costs)
     end
@@ -183,7 +184,7 @@ function store(
         DuckDB.append(appender.tech_costs, year)
         DuckDB.append(appender.tech_costs, cost_startup(tech, y) / powerunits_MW)
         DuckDB.append(appender.tech_costs, cost_generation(tech, y) / powerunits_MW)
-        DuckDB.append(appender.tech_costs, tech.cost_capital[y] / powerunits_MW)
+        DuckDB.append(appender.tech_costs, cost_capex(tech, y) / powerunits_MW)
         DuckDB.append(appender.tech_costs, nothing)
         DuckDB.end_row(appender.tech_costs)
     end
@@ -229,8 +230,8 @@ function store(
         DuckDB.append(appender.tech_costs, year)
         DuckDB.append(appender.tech_costs, nothing)
         DuckDB.append(appender.tech_costs, stor.cost_vom[y] / powerunits_MW)
-        DuckDB.append(appender.tech_costs, stor.cost_capital_power[y] / powerunits_MW)
-        DuckDB.append(appender.tech_costs, stor.cost_capital_energy[y] / powerunits_MW)
+        DuckDB.append(appender.tech_costs, cost_capex_power(stor, y) / powerunits_MW)
+        DuckDB.append(appender.tech_costs, cost_capex_energy(stor, y) / powerunits_MW)
         DuckDB.end_row(appender.tech_costs)
     end
 

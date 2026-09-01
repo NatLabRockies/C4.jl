@@ -31,8 +31,8 @@ maxpower(tech::StorageExpansion, i::Int) = sum(tech.power_new[1:i])
 maxenergy(tech::StorageExpansion, i::Int) = sum(tech.energy_new[1:i])
 
 cost_capex(tech::StorageExpansion, i::Int) =
-    tech.power_new[i] * tech.params.cost_capital_power[i] +
-    tech.energy_new[i] * tech.params.cost_capital_energy[i]
+    tech.power_new[i] * cost_capex_power(tech.params, i) +
+    tech.energy_new[i] * cost_capex_energy(tech.params, i)
 
 cost_fom(tech::StorageExpansion, i::Int) =
     maxpower(tech, i) * tech.params.cost_fom_power[i] +
@@ -83,8 +83,9 @@ function StorageCandidateParams(tech::StorageExpansion)
         params.cost_vom,
         params.cost_fom_power,
         params.cost_fom_energy,
-        params.cost_capital_power,
-        params.cost_capital_energy,
+        params.cost_overnightcapital_power,
+        params.cost_overnightcapital_energy,
+        params.capital_recovery_period,
         params.power_max .- value.(tech.power_new),
         params.energy_max .- value.(tech.energy_new))
 

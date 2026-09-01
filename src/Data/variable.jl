@@ -47,12 +47,18 @@ struct VariableCandidateParams
     name::String
     category::String
 
-    cost_capital::InvestmentDataArray{Float64} # annualized $/MW
+    cost_overnightcapital::InvestmentDataArray{Float64} # annualized $/MW
     cost_vom::InvestmentDataArray{Float64} # $/MWh
     cost_fom::InvestmentDataArray{Float64} # $/MWh
+
+    capital_recovery_period::Float64 # years
 
     sites::Vector{VariableCandidateSiteParams}
 
 end
+
+cost_capex(tech::VariableCandidateParams, invyear::Int, wacc::Float64) =
+    tech.cost_overnightcapital[invyear] *
+    financing_factor(wacc, tech.capital_recovery_period)
 
 tech(::Type{VariableCandidateSiteParams}) = VariableCandidateParams

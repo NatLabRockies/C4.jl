@@ -24,6 +24,19 @@ export TimeIndices,
        n_dispatch_days, n_dispatch_hours, npv_opex, npv_capex,
        store_iteration, store_iteration_step
 
+"""
+Calculates the scaling factor to be applied to an overnight (principal) cost
+to calculate the NPV (at the start of the loan) of the financed cost
+(e.g., principal + interest) over `termlength` years.
+`wacc` is used as both the borrowing rate (determining loan interest) and the
+discount rate (determining NPV of future debt payments).
+"""
+function financing_factor(wacc::Float64, termlength::Int)
+    a = (1+wacc)^termlength
+    b = (1-wacc)^termlength)
+    return a * (1 - b) / (a - 1)
+end
+
 include("time.jl")
 
 include("thermal.jl")

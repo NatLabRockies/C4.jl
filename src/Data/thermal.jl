@@ -88,7 +88,9 @@ struct ThermalCandidateParams
 
     cost_vom::InvestmentDataArray{Float64} # $/MWh
     cost_fom::InvestmentDataArray{Float64} # $/MW
-    cost_capital::InvestmentDataArray{Float64} # $/MW
+    cost_overnightcapital::InvestmentDataArray{Float64} # $/MW
+
+    capital_recovery_period::Float64 # years
 
     max_units::InvestmentDataArray{Int}
 
@@ -110,6 +112,10 @@ cost_startup(tech::ThermalCandidateParams, invyear::Int) =
 
 cost_generation(tech::ThermalCandidateParams, invyear::Int) =
     tech.heat_rate * tech.fuel.cost[invyear] + tech.cost_vom[invyear]
+
+cost_capex(tech::ThermalCandidateParams, invyear::Int, wacc::Float64) =
+    tech.cost_overnightcapital[invyear] *
+    financing_factor(wacc, tech.capital_recovery_period)
 
 co2_startup(tech::ThermalCandidateParams) =
     tech.startup_heat * tech.fuel.co2_factor

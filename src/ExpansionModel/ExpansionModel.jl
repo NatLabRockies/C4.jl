@@ -21,7 +21,8 @@ import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
 import ..Data: ThermalExistingParams, ThermalCandidateParams,
                VariableExistingParams, VariableExistingSiteParams,
                VariableCandidateParams, VariableCandidateSiteParams,
-               StorageExistingParams, StorageCandidateParams, SystemParams
+               StorageExistingParams, StorageCandidateParams, SystemParams,
+               cost_capex, cost_capex_power, cost_capex_energy
 
 using ..Data
 using ..AdequacyModel
