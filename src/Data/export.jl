@@ -27,7 +27,7 @@ function DuckDB.close(appender::DataAppender)
     return
 end
 
-function store(con::DuckDB.DB, sys::SystemParams)
+function store(con::DuckDB.DB, sys::SystemParams, wacc::Float64)
 
     DBInterface.execute(con, "CREATE TABLE investment_years (
         year INTEGER PRIMARY KEY
@@ -48,6 +48,7 @@ function store(con::DuckDB.DB, sys::SystemParams)
         techtype TEXT REFERENCES techtypes (techtype)
     )")
 
+    # TODO: Add cost_fom?
     DBInterface.execute(con, "CREATE TABLE tech_costs (
         tech TEXT REFERENCES techs (tech),
         year INTEGER REFERENCES investment_years (year),
@@ -69,13 +70,13 @@ function store(con::DuckDB.DB, sys::SystemParams)
     store(appender, sys.times)
 
     foreach(tech -> store(appender, tech, sys.times), sys.thermaltechs_existing)
-    foreach(tech -> store(appender, tech, sys.times), sys.thermaltechs_candidate)
+    foreach(tech -> store(appender, tech, sys.times, wacc), sys.thermaltechs_candidate)
 
     foreach(tech -> store(appender, tech, sys.times), sys.variabletechs_existing)
-    foreach(tech -> store(appender, tech, sys.times), sys.variabletechs_candidate)
+    foreach(tech -> store(appender, tech, sys.times, wacc), sys.variabletechs_candidate)
 
     foreach(tech -> store(appender, tech, sys.times), sys.storagetechs_existing)
-    foreach(tech -> store(appender, tech, sys.times), sys.storagetechs_candidate)
+    foreach(tech -> store(appender, tech, sys.times, wacc), sys.storagetechs_candidate)
 
     DuckDB.close(appender)
 
@@ -127,7 +128,7 @@ function store(
 end
 
 function store(
-    appender::DataAppender, tech::VariableCandidateParams, times::TimeIndices)
+    appender::DataAppender, tech::VariableCandidateParams, times::TimeIndices, wacc::Float64)
 
     DuckDB.append(appender.techs, tech.name)
     DuckDB.append(appender.techs, tech.category)
@@ -139,7 +140,7 @@ function store(
         DuckDB.append(appender.tech_costs, year)
         DuckDB.append(appender.tech_costs, nothing)
         DuckDB.append(appender.tech_costs, tech.cost_vom[y] / powerunits_MW)
-        DuckDB.append(appender.tech_costs, tech.cost_capital[y] / powerunits_MW)
+        DuckDB.append(appender.tech_costs, cost_capex(tech, y, wacc) / powerunits_MW)
         DuckDB.append(appender.tech_costs, nothing)
         DuckDB.end_row(appender.tech_costs)
     end
@@ -171,7 +172,7 @@ function store(
 end
 
 function store(
-    appender::DataAppender, tech::ThermalCandidateParams, times::TimeIndices)
+    appender::DataAppender, tech::ThermalCandidateParams, times::TimeIndices, wacc::Float64)
 
     DuckDB.append(appender.techs, tech.name)
     DuckDB.append(appender.techs, tech.category)
@@ -183,7 +184,7 @@ function store(
         DuckDB.append(appender.tech_costs, year)
         DuckDB.append(appender.tech_costs, cost_startup(tech, y) / powerunits_MW)
         DuckDB.append(appender.tech_costs, cost_generation(tech, y) / powerunits_MW)
-        DuckDB.append(appender.tech_costs, tech.cost_capital[y] / powerunits_MW)
+        DuckDB.append(appender.tech_costs, cost_capex(tech, y, wacc) / powerunits_MW)
         DuckDB.append(appender.tech_costs, nothing)
         DuckDB.end_row(appender.tech_costs)
     end
@@ -217,7 +218,7 @@ function store(
 end
 
 function store(
-    appender::DataAppender, stor::StorageCandidateParams, times::TimeIndices)
+    appender::DataAppender, stor::StorageCandidateParams, times::TimeIndices, wacc::Float64)
 
     DuckDB.append(appender.techs, stor.name)
     DuckDB.append(appender.techs, stor.category)
@@ -229,8 +230,8 @@ function store(
         DuckDB.append(appender.tech_costs, year)
         DuckDB.append(appender.tech_costs, nothing)
         DuckDB.append(appender.tech_costs, stor.cost_vom[y] / powerunits_MW)
-        DuckDB.append(appender.tech_costs, stor.cost_capital_power[y] / powerunits_MW)
-        DuckDB.append(appender.tech_costs, stor.cost_capital_energy[y] / powerunits_MW)
+        DuckDB.append(appender.tech_costs, cost_capex_power(stor, y, wacc) / powerunits_MW)
+        DuckDB.append(appender.tech_costs, cost_capex_energy(stor, y, wacc) / powerunits_MW)
         DuckDB.end_row(appender.tech_costs)
     end
 

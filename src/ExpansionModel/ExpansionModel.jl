@@ -21,7 +21,8 @@ import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
 import ..Data: ThermalExistingParams, ThermalCandidateParams,
                VariableExistingParams, VariableExistingSiteParams,
                VariableCandidateParams, VariableCandidateSiteParams,
-               StorageExistingParams, StorageCandidateParams, SystemParams
+               StorageExistingParams, StorageCandidateParams, SystemParams,
+               cost_capex, cost_capex_power, cost_capex_energy
 
 using ..Data
 using ..AdequacyModel
@@ -61,7 +62,7 @@ mutable struct ExpansionProblem
         co2_offset_price::Float64=NaN, # $/tonne CO2
         cem_voll::Float64=NaN, # $/MWh, NaN = hard power balance (no slack)
         unit_commitment::Bool=true,
-        discount_rate::Float64=0.,
+        wacc::Float64=0.,
         npv_year::Int=Int(first(system.times.investment_years))
     )
 
@@ -103,10 +104,11 @@ mutable struct ExpansionProblem
             ReliabilityConstraints(m, builds, i, riskparams[i], eue_max[i])
             for i in eachindex(chronologies)]
 
+        # TODO: Incorporate WACC into objective function
         @objective(m, Min,
-            npv_capex(cost_capex, builds, system.times, discount_rate, npv_year) +
-            npv_opex(cost, dispatches, system.times, discount_rate, npv_year) +
-            npv_opex(cost_fom, builds, system.times, discount_rate, npv_year)
+            npv_capex(builds, system.times, wacc, npv_year) +
+            npv_opex(cost, dispatches, system.times, wacc, npv_year) +
+            npv_opex(cost_fom, builds, system.times, wacc, npv_year)
             )
 
         return new(m, system, builds, dispatches, reliabilityconstraints)
@@ -166,8 +168,8 @@ opex(prob::ExpansionProblem; discount_rate::Float64=0., npv_year::Int=2025) =
     # npv_opex(cost_fom, prob.system, prob.system.times, discount_rate, npv_year) +
     npv_opex(cost_fom, prob.builds, prob.system.times, discount_rate, npv_year)
 
-capex(prob::ExpansionProblem; discount_rate::Float64=0., npv_year::Int=2025) =
-    npv_capex(cost_capex, prob.builds, prob.system.times, discount_rate, npv_year)
+capex(prob::ExpansionProblem; wacc::Float64=0., npv_year::Int=2025) =
+    npv_capex(prob.builds, prob.system.times, wacc, npv_year)
 
 # Capex is annualized, so scale carbon offset cost to approximate an annual cost
 co2_offset_cost(prob::ExpansionProblem; discount_rate::Float64=0., npv_year::Int=2025) =

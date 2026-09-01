@@ -62,15 +62,15 @@ days(times::TimeIndices) = (
 
 
 function npv_capex(
-    f::Function, x::T, times::TimeIndices,
-    discount_rate::Float64, npv_year::Int
+    x::T, times::TimeIndices,
+    wacc::Float64, npv_year::Int
 ) where T
 
     result = 0
 
     for (i, inv_year) in enumerate(times.investment_years)
-        scaling_factor = (1 - discount_rate)^(inv_year - npv_year)
-        result += scaling_factor * f(x, i)
+        scaling_factor = (1 - wacc)^(inv_year - npv_year)
+        result += scaling_factor * cost_capex(x, i, wacc)
     end
 
     return result

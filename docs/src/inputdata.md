@@ -95,6 +95,7 @@ Site and technology properties are represented in one of three ways based on the
                             <li>max_ramp</li>
                             <li>min_uptime</li>
                             <li>min_downtime</li>
+                            <li>capital_recovery_period</li>
                         </ul>
                     <li class="file">
                         tech_max_units.csv
@@ -172,6 +173,7 @@ Site and technology properties are represented in one of three ways based on the
                         <ul>
                             <li class="id">tech</li>
                             <li>category</li>
+                            <li>capital_recovery_period</li>
                         </ul>
                     <li class="file">
                         tech_cost_capital.csv
@@ -250,6 +252,7 @@ Site and technology properties are represented in one of three ways based on the
                             <li class="id">tech</li>
                             <li>category</li>
                             <li>roundtrip_efficiency</li>
+                            <li>capital_recovery_period</li>
                         </ul>
                     <li class="file">
                         tech_cost_capital_power.csv

@@ -25,7 +25,7 @@ function iterate_ra_cem(
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
     check_dispatch_invyears::Vector{Int}=Int[], check_dispatch_voll::Real=NaN,
-    unit_commitment::Bool=true, discount_rate::Float64=0.,
+    unit_commitment::Bool=true, wacc::Float64=0.,
     cem_voll::Float64=NaN)
 
     persist = length(outfile) > 0
@@ -59,7 +59,7 @@ function iterate_ra_cem(
     if persist
         store_start = now()
         con = DBInterface.connect(DuckDB.DB, outfile)
-        store(con, sys)
+        store(con, sys, wacc)
         store_iteration(con, 0)
         store_iteration_step(con, 0, "adequacy", ram_start => ram_end)
         store(con, 0, ram_result)
@@ -85,7 +85,7 @@ function iterate_ra_cem(
                                optimizer,
                                co2_max=max_co2s, co2_offset_price=co2_offset_price,
                                unit_commitment=unit_commitment,
-                               discount_rate=discount_rate,
+                               wacc=wacc,
                                cem_voll=cem_voll)
 
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
