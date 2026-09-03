@@ -77,7 +77,7 @@ function fullchronologyperiods(sys::SystemParams, dispyear::Int=0)
          DispatchDay("Y$y D$doy", d, sys.times))
      for d in range]
 
-    return DispatchProxyMapping(days, collect(range), range)
+    return DispatchProxyMapping(days, collect(eachindex(days)), range)
 
 end
 

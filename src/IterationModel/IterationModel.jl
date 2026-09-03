@@ -167,19 +167,34 @@ function iterate_ra_cem(
 
         pcm_start = now()
         n_iters += 1
+        persist && store_iteration(con, n_iters)
 
         pcms = DispatchProblem[]
-        for i in check_dispatch_invyears, dy in 1:n_dispatch_years(sys_built.times)
+        for i in check_dispatch_invyears
 
-            yearchrono = fullchronologyperiods(sys_built, dy)
+            year_pcms = DispatchProblem[]
+            for dy in 1:n_dispatch_years(sys_built.times)
 
-            pcm = DispatchProblem(
-                sys_built, i, yearchrono, optimizer;
-                voll=check_dispatch_voll,
-                unit_commitment=false)
+                yearchrono = fullchronologyperiods(sys_built, dy)
 
-            solve!(pcm)
-            push!(pcms, pcm)
+                pcm = DispatchProblem(
+                    sys_built, i, yearchrono, optimizer;
+                    voll=check_dispatch_voll,
+                    unit_commitment=false)
+
+                solve!(pcm)
+                push!(year_pcms, pcm)
+
+            end
+
+            if persist
+                for pcm in year_pcms
+                    store(con, n_iters, pcm.invyear, pcm.dispatch, pcm.system.times)
+                end
+            end
+
+            pcms = year_pcms
+            GC.gc()
 
         end
 
@@ -189,12 +204,7 @@ function iterate_ra_cem(
 
             store_start = now()
 
-            store_iteration(con, n_iters)
             store_iteration_step(con, n_iters, "dispatch", pcm_start => pcm_end)
-
-            for pcm in pcms
-                store(con, n_iters, pcm.invyear, pcm.dispatch, pcm.system.times)
-            end
 
             store_end = now()
 
