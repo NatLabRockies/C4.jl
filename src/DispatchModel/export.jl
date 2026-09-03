@@ -83,15 +83,16 @@ function store(con::DBInterface.Connection, iter::Int, i::Int, seq::DispatchSequ
 
     DuckDB.close(appender)
 
-    expected_periods = length(seq.time.days)
-    actual_periods = only(DBInterface.execute(con, """
-        SELECT COUNT(*) AS count
+    expected_periods = Set(period.name for period in seq.time.days)
+    actual_periods = Set(row.period for row in DBInterface.execute(con, """
+        SELECT period
         FROM periods
         WHERE iteration = $iter AND year = $(sys_times.investment_years[i])
-    """)).count
-    actual_periods == expected_periods || error(
+    """))
+    missing_periods = setdiff(expected_periods, actual_periods)
+    isempty(missing_periods) || error(
         "Dispatch export dropped periods for investment year $(sys_times.investment_years[i]): " *
-        "expected $expected_periods, got $actual_periods")
+        "missing $(length(missing_periods)) of $(length(expected_periods))")
 
     DBInterface.execute(con, "CREATE VIEW IF NOT EXISTS summary_generation AS
         SELECT iteration, year, period, tech, sum(dispatch) AS generation
