@@ -3,7 +3,7 @@ name: Generate and Publish Documentation
 on:
   push:
     branches:
-      - gs/investment-sequencing
+      - srp-2026
     tags: '*'
   pull_request:
 
