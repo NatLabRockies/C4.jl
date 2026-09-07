@@ -253,6 +253,8 @@ Site and technology properties are represented in one of three ways based on the
                             <li>category</li>
                             <li>roundtrip_efficiency</li>
                             <li>capital_recovery_period</li>
+                            <li>duration_min</li>
+                            <li>duration_max</li>
                         </ul>
                     <li class="file">
                         tech_cost_capital_power.csv

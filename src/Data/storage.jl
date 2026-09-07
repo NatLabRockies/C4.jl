@@ -36,6 +36,8 @@ struct StorageCandidateParams
     category::String
 
     roundtrip_efficiency::Float64
+    duration_min::Float64 # h
+    duration_max::Float64 # h
 
     cost_vom::InvestmentDataArray{Float64} # $/MWh
     cost_fom_power::InvestmentDataArray{Float64} # $/MWh
@@ -47,7 +49,6 @@ struct StorageCandidateParams
 
     power_max::InvestmentDataArray{Float64} # MW
     energy_max::InvestmentDataArray{Float64} # MWh
-    # could do a duration_max too?
 
 end
 

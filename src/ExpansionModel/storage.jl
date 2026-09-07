@@ -5,6 +5,9 @@ struct StorageExpansion <: DispatchableStorageTech
     power_new::Vector{JuMP.VariableRef}
     energy_new::Vector{JuMP.VariableRef}
 
+    duration_min::Vector{JuMP_LessThanConstraintRef}
+    duration_max::Vector{JuMP_LessThanConstraintRef}
+
     function StorageExpansion(
         m::JuMP.Model, techparams::StorageCandidateParams, times::TimeIndices)
 
@@ -20,7 +23,13 @@ struct StorageExpansion <: DispatchableStorageTech
         varnames!(energy_new, "storage_new_energy[$(techparams.name)]",
                   times.investment_years)
 
-        new(techparams, power_new, energy_new)
+        duration_min = @constraint(m, [i in 1:n_invyears],
+            techparams.duration_min * sum(power_new[1:i]) <= sum(energy_new[1:i]))
+
+        duration_max = @constraint(m, [i in 1:n_invyears],
+            sum(energy_new[1:i]) <= techparams.duration_max * sum(power_new[1:i]))
+
+        new(techparams, power_new, energy_new, duration_min, duration_max)
 
     end
 
@@ -80,6 +89,8 @@ function StorageCandidateParams(tech::StorageExpansion)
         params.name,
         params.category,
         params.roundtrip_efficiency,
+        params.duration_min,
+        params.duration_max,
         params.cost_vom,
         params.cost_fom_power,
         params.cost_fom_energy,

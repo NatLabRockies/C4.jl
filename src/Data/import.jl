@@ -498,7 +498,8 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
 
     validate_columns(
         techs, ["tech", "category", "roundtrip_efficiency",
-                "capital_recovery_period"], techspath)
+                "capital_recovery_period", "duration_min", "duration_max"],
+                techspath)
 
     allunique(techs[2:end, 1]) ||
         error("Duplicate technology names in $techspath")
@@ -510,6 +511,8 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
 
         roundtrip_efficiency = Float64(techs[r, 3])
         capital_recovery_period = Int(techs[r, 4])
+        duration_min = Float64(techs[r, 5])
+        duration_max = Float64(techs[r, 6])
 
         cost_vom = defaultinvestmentdata(system.times, 0.)
         cost_fom_power = defaultinvestmentdata(system.times, 0.)
@@ -521,7 +524,8 @@ function load_candidate_storagetechs!(system::SystemParams, datadir::String)
         energy_max = defaultinvestmentdata(system.times, 0.)
 
         tech = StorageCandidateParams(
-            techname, category, roundtrip_efficiency,
+            techname, category,
+            roundtrip_efficiency, duration_min, duration_max,
             cost_vom, cost_fom_power, cost_fom_energy,
             cost_overnightcapital_power, cost_overnightcapital_energy,
             capital_recovery_period, power_max, energy_max)
