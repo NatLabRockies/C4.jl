@@ -169,10 +169,8 @@ function iterate_ra_cem(
         n_iters += 1
         persist && store_iteration(con, n_iters)
 
-        pcms = DispatchProblem[]
         for i in check_dispatch_invyears
 
-            year_pcms = DispatchProblem[]
             for dy in 1:n_dispatch_years(sys_built.times)
 
                 yearchrono = fullchronologyperiods(sys_built, dy)
@@ -183,34 +181,21 @@ function iterate_ra_cem(
                     unit_commitment=false)
 
                 solve!(pcm)
-                push!(year_pcms, pcm)
 
-            end
-
-            if persist
-                for pcm in year_pcms
+                if persist
                     store(con, n_iters, pcm.invyear, pcm.dispatch, pcm.system.times)
+                    DBInterface.execute(con, "CHECKPOINT")
                 end
-            end
 
-            pcms = year_pcms
-            GC.gc()
+            end
 
         end
 
         pcm_end = now()
 
         if persist
-
-            store_start = now()
-
             store_iteration_step(con, n_iters, "dispatch", pcm_start => pcm_end)
-
-            store_end = now()
-
-            store_iteration_step(con, n_iters, "persistence", store_start => store_end)
             DBInterface.execute(con, "CHECKPOINT")
-
         end
 
     end
