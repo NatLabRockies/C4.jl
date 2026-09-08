@@ -70,6 +70,7 @@ function store(con::DBInterface.Connection, iter::Int, i::Int, seq::DispatchSequ
         timestep INTEGER,
         tech TEXT,
         dispatch DOUBLE,
+        startups INTEGER,
         FOREIGN KEY (iteration, year, period)
             REFERENCES periods (iteration, year, period),
         FOREIGN KEY (tech) REFERENCES techs (tech),
@@ -164,12 +165,17 @@ function store(appender::DispatchAppender, iter::Int, i::Int,
 
             dispatch_val = value(gen.dispatch[h]) * powerunits_MW
 
+            startups = length(gen.units_startup) > 0 ?
+                round(Int, value(gen.units_startup[h])) :
+                nothing
+
             DuckDB.append(appender.dispatches, iter)
             DuckDB.append(appender.dispatches, invyear)
             DuckDB.append(appender.dispatches, dispatch.period.name)
             DuckDB.append(appender.dispatches, h)
             DuckDB.append(appender.dispatches, name(gen))
             DuckDB.append(appender.dispatches, dispatch_val)
+            DuckDB.append(appender.dispatches, startups)
             DuckDB.end_row(appender.dispatches)
 
         end
@@ -184,6 +190,7 @@ function store(appender::DispatchAppender, iter::Int, i::Int,
             DuckDB.append(appender.dispatches, h)
             DuckDB.append(appender.dispatches, name(gen))
             DuckDB.append(appender.dispatches, dispatch_val)
+            DuckDB.append(appender.dispatches, nothing)
             DuckDB.end_row(appender.dispatches)
 
         end
@@ -198,6 +205,7 @@ function store(appender::DispatchAppender, iter::Int, i::Int,
             DuckDB.append(appender.dispatches, h)
             DuckDB.append(appender.dispatches, name(stor))
             DuckDB.append(appender.dispatches, dispatch_val)
+            DuckDB.append(appender.dispatches, nothing)
             DuckDB.end_row(appender.dispatches)
 
         end
