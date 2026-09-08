@@ -61,6 +61,8 @@ cost_startup(tech::ThermalExistingParams, invyear::Int) =
 cost_generation(tech::ThermalExistingParams, invyear::Int) =
     tech.heat_rate * tech.fuel.cost[invyear] + tech.cost_vom[invyear]
 
+cost_fom(tech::ThermalExistingParams, invyear::Int) = tech.cost_fom[invyear]
+
 co2_startup(tech::ThermalExistingParams) =
     tech.startup_heat * tech.fuel.co2_factor
 
@@ -112,6 +114,8 @@ cost_startup(tech::ThermalCandidateParams, invyear::Int) =
 
 cost_generation(tech::ThermalCandidateParams, invyear::Int) =
     tech.heat_rate * tech.fuel.cost[invyear] + tech.cost_vom[invyear]
+
+cost_fom(tech::ThermalCandidateParams, invyear::Int) = tech.cost_fom[invyear]
 
 cost_capex(tech::ThermalCandidateParams, invyear::Int, wacc::Float64) =
     tech.cost_overnightcapital[invyear] *

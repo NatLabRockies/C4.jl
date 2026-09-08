@@ -7,7 +7,7 @@ import Base: length
 import ..DispatchableVariableSite, ..DispatchableTech,
        ..DispatchableThermalTech, ..DispatchableVariableTech, ..DispatchableStorageTech,
        ..DispatchableSystem, ..cost_generation, ..cost_startup,
-       ..maxpower, ..maxenergy, ..roundtrip_efficiency, ..operating_cost,
+       ..maxpower, ..maxenergy, ..roundtrip_efficiency, ..operating_cost, ..cost_fom,
        ..max_unit_ramp, ..num_units, ..unit_size, ..min_gen, ..min_uptime, ..min_downtime,
        ..co2_startup, ..co2_generation,
        ..name, ..variabletechs, ..storagetechs, ..thermaltechs,

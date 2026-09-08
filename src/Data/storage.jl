@@ -30,6 +30,9 @@ roundtrip_efficiency(tech::StorageExistingParams) = tech.roundtrip_efficiency
 
 operating_cost(tech::StorageExistingParams, i::Int) = tech.cost_vom[i]
 
+cost_fom_power(tech::StorageExistingParams, invyear::Int) = tech.cost_fom_power[invyear]
+cost_fom_energy(tech::StorageExistingParams, invyear::Int) = tech.cost_fom_energy[invyear]
+
 struct StorageCandidateParams
 
     name::String
@@ -51,6 +54,11 @@ struct StorageCandidateParams
     energy_max::InvestmentDataArray{Float64} # MWh
 
 end
+
+operating_cost(tech::StorageCandidateParams, i::Int) = tech.cost_vom[i]
+
+cost_fom_power(tech::StorageCandidateParams, invyear::Int) = tech.cost_fom_power[invyear]
+cost_fom_energy(tech::StorageCandidateParams, invyear::Int) = tech.cost_fom_energy[invyear]
 
 cost_capex_power(tech::StorageCandidateParams, invyear::Int, wacc::Float64) =
     tech.cost_overnightcapital_power[invyear] *

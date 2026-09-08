@@ -29,6 +29,7 @@ tech(::Type{VariableExistingSiteParams}) = VariableExistingParams
 
 sites(tech::VariableExistingParams) = tech.sites
 cost_generation(tech::VariableExistingParams, invyear::Int) = tech.cost_vom[invyear]
+cost_fom(tech::VariableExistingParams, invyear::Int) = tech.cost_fom[invyear]
 name(tech::VariableExistingParams) = tech.name
 
 struct VariableCandidateSiteParams
@@ -57,8 +58,12 @@ struct VariableCandidateParams
 
 end
 
+cost_fom(tech::VariableCandidateParams, invyear::Int) = tech.cost_fom[invyear]
+
 cost_capex(tech::VariableCandidateParams, invyear::Int, wacc::Float64) =
     tech.cost_overnightcapital[invyear] *
     financing_factor(wacc, tech.capital_recovery_period)
+
+cost_generation(tech::VariableCandidateParams, invyear::Int) = tech.cost_vom[invyear]
 
 tech(::Type{VariableCandidateSiteParams}) = VariableCandidateParams
