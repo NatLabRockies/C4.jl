@@ -1,3 +1,107 @@
+function sweep_iterate_neue(
+    sys::SystemParams, chronology::TimeProxyAssignment,
+    neue_requirements::Vector{Float64}, optimizer; neue_tol::Float64=.001,
+    nsamples::Int=1000, outfile_prefix::String="",
+    ra_optimizer=nothing)
+
+    if isnothing(ra_optimizer)
+        ra_optimizer = optimizer
+    end
+
+    persist = length(outfile_prefix) > 0
+
+    neue_factor = total_demand(sys) * 1e-6
+
+    ram_start = now()
+    ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples)
+    ram_base_result = solve(ram)
+    neue_base_val = neue(ram_base_result)
+    ram_end = now()
+
+    println("NEUE: ", neue_base_val)
+    println("LOLE: ", sum(ram_base_result.lolps))
+
+    eue_planes = EUECuttingPlaneParams[]
+
+    for neue_requirement in neue_requirements
+
+        println("Expanding with NEUE requirement = ", neue_requirement)
+        println(length(eue_planes), " EUE planes already available")
+
+        sys_built = nothing
+        cem = nothing
+        ram_result = nothing
+        neue_val = neue_base_val
+
+        eue_params = EUEParameters(neue_requirement * neue_factor, eue_planes)
+
+        if persist
+            req_outfile = "$(outfile_prefix)_$(neue_requirement).db"
+            store_start = now()
+            con = DBInterface.connect(DuckDB.DB, req_outfile)
+            store(con, sys)
+            store_iteration(con, 0)
+            store_iteration_step(con, 0, "adequacy", ram_start => ram_end)
+            store(con, 0, ram_base_result)
+            store_end = now()
+            store_iteration_step(con, 0, "persistence", store_start => store_end)
+        end
+
+        n_iters = 0
+
+        while neue_val > neue_requirement * (1 + neue_tol)
+
+            n_iters += 1
+
+            cem_start = now()
+            cem = ExpansionProblem(sys, chronology, eue_params, optimizer)
+            solve!(cem)
+            cem_end = now()
+
+            ram_start = now()
+            sys_built = SystemParams(cem)
+            ram = AdequacyProblem(sys_built, ra_optimizer, samples=nsamples)
+            ram_result = solve(ram)
+            neue_val = neue(ram_result)
+            ram_end = now()
+
+            println("NEUE: ", neue_val)
+            println("LOLE: ", sum(ram_result.lolps))
+
+            aug_start = now()
+            push!(eue_planes, EUECuttingPlaneParams(cem.builds, ram_result))
+            aug_end = now()
+
+            if persist
+                store_start = now()
+                store_iteration(con, n_iters)
+                store_iteration_step(con, n_iters, "expansion", cem_start => cem_end)
+                store_iteration_step(con, n_iters, "adequacy", ram_start => ram_end)
+                store_iteration_step(con, n_iters, "augmentation", aug_start => aug_end)
+                store(con, n_iters, cem.builds)
+                store(con, n_iters, cem.economicdispatch)
+                store(con, n_iters, ram_result)
+                DBInterface.execute(con, "CHECKPOINT")
+                store_end = now()
+                store_iteration_step(con, n_iters, "persistence", store_start => store_end)
+                DBInterface.execute(con, "CHECKPOINT")
+            end
+
+        end
+
+        display(sys_built)
+        println("LOLPs: ", ram_result.lolps)
+        println("EUEs: ", ram_result.eues)
+
+        println("Capex: ", value(capex(cem)))
+        println("Opex: ", value(opex(cem)))
+        println("System Cost: ", value(cost(cem)))
+        println("System LCOE: ", value(lcoe(cem)))
+
+    end
+
+end
+
 function iterate_neue(
     sys::SystemParams, base_chronology::TimeProxyAssignment,
     max_neue::Float64, optimizer; neue_tol::Float64=.01,

@@ -115,18 +115,11 @@ println("Opex: ", value(opex(cem)))
 println("System Cost: ", value(cost(cem)))
 println("System LCOE: ", value(lcoe(cem)))
 
-cem, ram = iterate_elcc(
-    sys, fullchrono, max_neue, optimizer,
-    nsamples=100_000, outfile=timestamp * "_elcc.db")
+sweep_iterate_neue(
+    sys, fullchrono, [40., 20, 10, 5, 2.5], optimizer,
+    nsamples=100_000, outfile_prefix=timestamp * "_neue")
 
-write_to_file(cem.model, "elcc_model.lp")
-
-sys_built = SystemParams(cem)
-display(sys_built)
-println("LOLPs: ", ram.lolps)
-println("EUEs: ", ram.eues)
-
-println("Capex: ", value(capex(cem)))
-println("Opex: ", value(opex(cem)))
-println("System Cost: ", value(cost(cem)))
-println("System LCOE: ", value(lcoe(cem)))
+sweep_iterate_elcc(
+    sys, fullchrono, [60., 65, 70, 75], optimizer,
+    elcc_neue_target=10.,
+    nsamples=100_000, outfile_prefix=timestamp * "_elcc")

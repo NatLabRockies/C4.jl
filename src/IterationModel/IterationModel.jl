@@ -14,7 +14,7 @@ import DelimitedFiles: writedlm
 import DuckDB
 import JuMP: value
 
-export iterate_neue, iterate_elcc
+export iterate_neue, sweep_iterate_neue, sweep_iterate_elcc
 
 include("iterate_neue.jl")
 include("iterate_elcc.jl")

@@ -144,11 +144,14 @@ struct EUEConstraints <: AdequacyConstraints
 end
 
 struct EUEParameters <: AdequacyParameters
-    planes::Vector{EUECuttingPlaneParams}
-    eue_max::Float64 # in powerunits_MW
 
-    function EUEParameters(eue_max::Float64)
-        return new(EUECuttingPlaneParams[], eue_max)
+    eue_max::Float64 # in powerunits_MW
+    planes::Vector{EUECuttingPlaneParams}
+
+    function EUEParameters(
+        eue_max::Float64,
+        eue_planes::Vector{EUECuttingPlaneParams}=EUECuttingPlaneParams[])
+        return new(eue_max, eue_planes)
     end
 
 end

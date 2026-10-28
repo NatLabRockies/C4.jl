@@ -1,86 +1,63 @@
-using Statistics
-
-function iterate_elcc(
-    sys::SystemParams, base_chronology::TimeProxyAssignment,
-    neue_target::Float64, optimizer;
-    neue_tol::Float64=.01, elcc_tol::Float64=.001,
-    nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
-    aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
-    check_dispatch::Bool=false, check_dispatch_voll::Float64=NaN,
-    ra_optimizer=nothing)
+function sweep_iterate_elcc(
+    sys::SystemParams, chronology::TimeProxyAssignment,
+    elcc_requirements::Vector{Float64}, optimizer; ra_optimizer=nothing,
+    elcc_neue_target=1.0, elcc_tol::Float64=.001,
+    nsamples::Int=1000, outfile_prefix::String="")
 
     if isnothing(ra_optimizer)
         ra_optimizer = optimizer
     end
 
-    persist = length(outfile) > 0
+    persist = length(outfile_prefix) > 0
 
     neue_factor = total_demand(sys) * 1e-6
-    neue_lb = neue_target * (1 - neue_tol)
-    neue_ub = neue_target * (1 + neue_tol)
-    
-    elcc_max_eue = neue_target * neue_factor * powerunits_MW
+    elcc_max_eue = elcc_neue_target * neue_factor * powerunits_MW
 
-    ram_start = now()
+    ram_base_start = now()
     ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples)
-    elcc_val, ram_result, elcc_ram_result =
+    elcc_base_val, ram_base_result, elcc_ram_result =
         elcc(ram, maximum(sys.demand) * powerunits_MW, elcc_max_eue)
-    ram_end = now()
+    ram_base_end = now()
 
-    println("ELCC: ", elcc_val)
-    println("NEUE: ", neue(ram_result))
-    println("LOLE: ", sum(ram_result.lolps))
+    println("ELCC: ", elcc_base_val)
+    println("NEUE: ", neue(ram_base_result))
+    println("LOLE: ", sum(ram_base_result.lolps))
 
-    aug_start = now()
+    elcc_planes = ELCCCuttingPlaneParams[]
 
-    chronology = if aspp
-        add_stressperiod(sys, base_chronology, ram_result,
-                         skip_existing=skip_existing_stress_periods)
-    else
-        base_chronology
-    end
+    for elcc_requirement in elcc_requirements
 
-    aug_end = now()
+        println("Expanding with ELCC requirement = ", elcc_requirement)
+        println(length(elcc_planes), " ELCC planes already available")
 
-    if persist
-        store_start = now()
-        con = DBInterface.connect(DuckDB.DB, outfile)
-        store(con, sys)
-        store_iteration(con, 0)
-        store_iteration_step(con, 0, "adequacy", ram_start => ram_end)
-        store(con, 0, ram_result)
-        store_iteration_step(con, 0, "augmentation", aug_start => aug_end)
-        store_end = now()
-        store_iteration_step(con, 0, "persistence", store_start => store_end)
-    end
+        sys_built = nothing
+        cem = nothing
+        ram_result = nothing
+        elcc_val = elcc_base_val
 
-    sys_built = nothing
-    cem = nothing
-    prev_cem = nothing
-    n_iters = 0
+        elcc_params = ELCCSurfaceParameters(
+            elcc_requirement / powerunits_MW, elcc_planes)
 
-    elcc_prev = 0.
-    neue_prev = 1e6
-    
-    elcc_params = ELCCSurfaceParameters(mean(sys.demand))
-    println("Intialized ELCC requirement to ", elcc_params.elcc_min * powerunits_MW)
-    elcc_lb = elcc_params.elcc_min * (1 - elcc_tol) * powerunits_MW
-    elcc_ub = elcc_params.elcc_min * (1 + elcc_tol) * powerunits_MW
+        if persist
+            req_outfile= "$(outfile_prefix)_$(elcc_requirement).db"
+            store_start = now()
+            con = DBInterface.connect(DuckDB.DB, req_outfile)
+            store(con, sys)
+            store_iteration(con, 0)
+            store_iteration_step(con, 0, "adequacy", ram_base_start => ram_base_end)
+            store(con, 0, ram_base_result)
+            store_end = now()
+            store_iteration_step(con, 0, "persistence", store_start => store_end)
+        end
 
-    while true
+        n_iters = 0
 
-        while !(elcc_lb <= elcc_val <= elcc_ub)
+        while elcc_val < elcc_requirement * (1 - elcc_tol)
 
             n_iters += 1
 
-            elcc_prev = elcc_val
-            neue_prev = neue(ram_result)
-
             cem_start = now()
-
             cem = ExpansionProblem(sys, chronology, elcc_params, optimizer)
-            isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
-
             solve!(cem)
             cem_end = now()
 
@@ -96,18 +73,8 @@ function iterate_elcc(
             println("LOLE: ", sum(ram_result.lolps))
 
             aug_start = now()
-
-            if aspp
-                chronology = add_stressperiod(
-                    sys, chronology, ram_result,
-                    skip_existing=skip_existing_stress_periods)
-            end
-
-            if endog_risk
-                push!(elcc_params.planes,
-                      ELCCCuttingPlaneParams(cem.builds, elcc_val/powerunits_MW, elcc_ram_result))
-            end
-
+            push!(elcc_planes, ELCCCuttingPlaneParams(
+                cem.builds, elcc_val/powerunits_MW, ram_result))
             aug_end = now()
 
             if persist
@@ -125,28 +92,17 @@ function iterate_elcc(
                 DBInterface.execute(con, "CHECKPOINT")
             end
 
-            prev_cem = cem
-
-            neue_lb <= neue(ram_result) <= neue_ub  && break
-            aspp || endog_risk || break
-
         end
 
-        # TODO: Try dynamically updating the ELCC target each iteration?
-        neue_val = neue(ram_result)
-        neue_lb <= neue_val <= neue_ub  && break
+        display(sys_built)
+        println("LOLPs: ", ram_result.lolps)
+        println("EUEs: ", ram_result.eues)
 
-        new_min_elcc = elcc_val -
-            (neue_val - neue_target) / (neue_val - neue_prev) * (elcc_val - elcc_prev)
-
-        elcc_params.elcc_min = new_min_elcc / powerunits_MW
-        
-        elcc_lb = new_min_elcc * (1 - elcc_tol)
-        elcc_ub = new_min_elcc * (1 + elcc_tol)
-        println("Recalibrated ELCC requirement to $(new_min_elcc)")
+        println("Capex: ", value(capex(cem)))
+        println("Opex: ", value(opex(cem)))
+        println("System Cost: ", value(cost(cem)))
+        println("System LCOE: ", value(lcoe(cem)))
 
     end
-
-    return cem, ram_result
 
 end

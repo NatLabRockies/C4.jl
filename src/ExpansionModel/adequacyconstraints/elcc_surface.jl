@@ -148,11 +148,16 @@ struct ELCCSurfaceConstraints <: AdequacyConstraints
 end
 
 mutable struct ELCCSurfaceParameters <: AdequacyParameters
-    planes::Vector{ELCCCuttingPlaneParams}
-    elcc_min::Float64 # in powerunits_MW
 
-    function ELCCSurfaceParameters(elcc_min::Float64)
-        return new(ELCCCuttingPlaneParams[], elcc_min)
+    elcc_min::Float64 # in powerunits_MW
+    planes::Vector{ELCCCuttingPlaneParams}
+
+    function ELCCSurfaceParameters(
+        elcc_min::Float64,
+        planes::Vector{ELCCCuttingPlaneParams}=ELCCCuttingPlaneParams[])
+
+        return new(elcc_min, planes)
+
     end
 
 end
