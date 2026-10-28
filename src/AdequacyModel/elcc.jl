@@ -1,17 +1,17 @@
-function elcc(prob::AdequacyProblem, elcc_min::Float64, eue_criterion::Float64)
+function elcc(prob::AdequacyProblem, elcc_initial_guess::Float64, eue_criterion::Float64)
 
     real_result = solve(prob)
 
-    prob = deepcopy(prob)
+    elcc_prob = deepcopy(prob)
 
-    demand = elcc_min
+    demand = elcc_initial_guess
     elcc_result = nothing
 
     while true
 
-        prob.params.demand .= demand
+        elcc_prob.params.demand .= demand
 
-        elcc_result = solve(prob)
+        elcc_result = solve(elcc_prob)
         eue_mean, eue_stderr = eue_estimate(elcc_result)
         
         if iszero(eue_mean)
