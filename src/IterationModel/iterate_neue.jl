@@ -15,11 +15,12 @@ function sweep_iterate_neue(
     ram_start = now()
     ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples)
     ram_base_result = solve(ram)
-    neue_base_val = neue(ram_base_result)
+    neue_base_val, neue_base_stderr = neue_estimate(ram_base_result)
+    lole_base_val, lole_base_stderr = lole_estimate(ram_base_result)
     ram_end = now()
 
-    println("NEUE: ", neue_base_val)
-    println("LOLE: ", sum(ram_base_result.lolps))
+    println("NEUE: ", neue_base_val, " ± ", neue_base_stderr)
+    println("LOLE: ", lole_base_val, " ± ", lole_base_stderr)
 
     eue_planes = EUECuttingPlaneParams[]
 
@@ -62,11 +63,12 @@ function sweep_iterate_neue(
             sys_built = SystemParams(cem)
             ram = AdequacyProblem(sys_built, ra_optimizer, samples=nsamples)
             ram_result = solve(ram)
-            neue_val = neue(ram_result)
+            neue_val, neue_stderr = neue_estimate(ram_result)
+            lole_val, lole_stderr = lole_estimate(ram_result)
             ram_end = now()
 
-            println("NEUE: ", neue_val)
-            println("LOLE: ", sum(ram_result.lolps))
+            println("NEUE: ", neue_val, " ± ", neue_stderr)
+            println("LOLE: ", lole_val, " ± ", lole_stderr)
 
             aug_start = now()
             push!(eue_planes, EUECuttingPlaneParams(cem.builds, ram_result))
@@ -124,16 +126,12 @@ function iterate_neue(
     ram_start = now()
     ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples)
     ram_result = solve(ram)
+    neue_val, neue_stderr = neue_estimate(ram_result)
+    lole_val, lole_stderr = lole_estimate(ram_result)
     ram_end = now()
 
-    println("NEUE: ", neue(ram_result))
-    println("LOLE: ", sum(ram_result.lolps))
-    # println("LOLPs: ", ram_result.lolps)
-    # println("EUEs: ", ram_result.eues)
-    # println("Generation dEUE: ", ram_result.generation_dEUEs)
-    # println("Storage Power dEUE: ", ram_result.storage_power_dEUEs)
-    # println("Storage Energy dEUE: ", ram_result.storage_energy_dEUEs)
-    #show_neues(ram_result)
+    println("NEUE: ", neue_val, " ± ", neue_stderr)
+    println("LOLE: ", lole_val, " ± ", lole_stderr)
 
     aug_start = now()
 
@@ -174,11 +172,6 @@ function iterate_neue(
         cem = ExpansionProblem(sys, chronology, eue_params, optimizer)
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
-        # println("Recurrences:")
-        # for recc in cem.economicdispatch.recurrences
-        #     println(recc.repetitions, " x ", recc.dispatch.period.name)
-        # end
-
         solve!(cem)
         cem_end = now()
 
@@ -188,13 +181,11 @@ function iterate_neue(
         ram_result = solve(ram)
         ram_end = now()
 
-        println("NEUE: ", neue(ram_result))
-        println("LOLE: ", sum(ram_result.lolps))
-        # println("LOLPs: ", ram_result.lolps)
-        # println("EUEs: ", ram_result.eues)
-        # println("Generation dEUE: ", ram_result.generation_dEUEs)
-        # println("Storage Power dEUE: ", ram_result.storage_power_dEUEs)
-        # println("Storage Energy dEUE: ", ram_result.storage_energy_dEUEs)
+        neue_mean, neue_stderr = neue_estimate(ram_result)
+        lole_mean, lole_stderr = lole_estimate(ram_result)
+
+        println("NEUE: ", neue_mean, " ± ", neue_stderr)
+        println("LOLE: ", lole_mean, " ± ", lole_stderr)
 
         is_adequate = neue(ram_result) <= max_neue * (1 + neue_tol)
 

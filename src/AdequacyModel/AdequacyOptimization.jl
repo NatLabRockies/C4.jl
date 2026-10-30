@@ -70,12 +70,12 @@ unserved(opt::AdequacyOptimization) = value.(opt.unserved)
 
 grid_dual(opt::AdequacyOptimization) = -shadow_price.(opt.grid_balance)
 
-stor_power_dual(opt::AdequacyOptimization) =
+stor_power_dual(opt::AdequacyOptimization) = vec(
     - sum(shadow_price.(UpperBoundRef.(opt.charge)), dims=2, init=0.) -
-    sum(shadow_price.(UpperBoundRef.(opt.discharge)), dims=2, init=0.)
+    sum(shadow_price.(UpperBoundRef.(opt.discharge)), dims=2, init=0.))
 
-stor_energy_dual(opt::AdequacyOptimization) =
-    -sum(shadow_price.(UpperBoundRef.(opt.energy)), dims=2, init=0.)
+stor_energy_dual(opt::AdequacyOptimization) = vec(
+    -sum(shadow_price.(UpperBoundRef.(opt.energy)), dims=2, init=0.))
 
 function sample_surplus!(
     opt::AdequacyOptimization, prob::AdequacyParams, sample_idx::Int)

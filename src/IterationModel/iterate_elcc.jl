@@ -17,11 +17,13 @@ function sweep_iterate_elcc(
     ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples)
     elcc_base_val, ram_base_result, elcc_ram_result =
         elcc(ram, maximum(sys.demand) * powerunits_MW, elcc_max_eue)
+    neue_base_mean, neue_base_stderr = neue_estimate(ram_base_result)
+    lole_base_mean, lole_base_stderr = lole_estimate(ram_base_result)
     ram_base_end = now()
 
     println("ELCC: ", elcc_base_val)
-    println("NEUE: ", neue(ram_base_result))
-    println("LOLE: ", sum(ram_base_result.lolps))
+    println("NEUE: ", neue_base_mean, " ± ", neue_base_stderr)
+    println("LOLE: ", lole_base_mean, " ± ", lole_base_stderr)
 
     elcc_planes = ELCCCuttingPlaneParams[]
 
@@ -66,11 +68,13 @@ function sweep_iterate_elcc(
             ram = AdequacyProblem(sys_built, ra_optimizer, samples=nsamples)
             elcc_val, ram_result, elcc_ram_result =
                 elcc(ram, elcc_params.elcc_min * powerunits_MW, elcc_max_eue)
+            neue_mean, neue_stderr = neue_estimate(ram_result)
+            lole_mean, lole_stderr = lole_estimate(ram_result)
             ram_end = now()
 
             println("ELCC: ", elcc_val)
-            println("NEUE: ", neue(ram_result))
-            println("LOLE: ", sum(ram_result.lolps))
+            println("NEUE: ", neue_mean, " ± ", neue_stderr)
+            println("LOLE: ", lole_mean, " ± ", lole_stderr)
 
             aug_start = now()
             push!(elcc_planes, ELCCCuttingPlaneParams(

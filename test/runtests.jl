@@ -44,9 +44,9 @@ max_neue = 10. # for iterate_neue
 
 eue_params = EUEParameters(max_eue)
 
-ram = AdequacyProblem(sys, optimizer, samples=1000)
+ram = AdequacyProblem(sys, optimizer, samples=1000, threaded=false)
 ram_results = solve(ram)
-println("\nBase NEUE = ", neue(ram_results))
+println("\nBase NEUE = ", neue_estimate(ram_results))
 println("LOLPs: ", ram_results.lolps)
 println("EUEs: ", ram_results.eues)
 
@@ -64,7 +64,7 @@ println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram) # Dig into these results
-println("\nNEUE = ", neue(ram_results))
+println("\nNEUE = ", neue_estimate(ram_results))
 println("LOLPs: ", ram_results.lolps)
 println("EUEs: ", ram_results.eues)
 
@@ -80,7 +80,7 @@ println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram)
-println("\nNEUE = ", neue(ram_results))
+println("\nNEUE = ", neue_estimate(ram_results))
 println("LOLPs: ", ram_results.lolps)
 println("EUEs: ", ram_results.eues)
 
@@ -96,14 +96,14 @@ println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram)
-println("\nNEUE = ", neue(ram_results))
+println("\nNEUE = ", neue_estimate(ram_results))
 println("LOLPs: ", ram_results.lolps)
 println("EUEs: ", ram_results.eues)
 
 println("\nSingle-region Iterative CEM:")
 cem, ram, pcm = iterate_neue(
     sys, fullchrono, max_neue, optimizer,
-    nsamples=100_000, outfile=timestamp * "_neue.db")
+    nsamples=10_000, outfile=timestamp * "_neue.db")
 
 sys_built = SystemParams(cem)
 display(sys_built)
