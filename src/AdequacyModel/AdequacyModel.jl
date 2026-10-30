@@ -1,5 +1,6 @@
 module AdequacyModel
 
+import Base: length
 import Base.Threads: nthreads, @spawn
 
 import Dates: DateTime, Hour
@@ -16,7 +17,10 @@ using ..Data
 import ..powerunits_MW, ..maxpower, ..maxenergy, ..N_HOURS_IN_DAY,
        ..JuMP_LessThanConstraintRef, ..JuMP_EqualToConstraintRef, ..solve!
 
-export AdequacyProblem, AdequacyResult, solve, neue, neues
+export AdequacyProblem, AdequacyResult, solve, neue, neues,
+    neue_estimates, eue_estimates, lole_estimates
+
+include("mean_variance.jl")
 
 include("AdequacyParams.jl")
 include("AdequacyOptimization.jl")
@@ -44,28 +48,33 @@ mutable struct SingleThreadAdequacyResult
 
     n_samples::Int
 
-    lolps::Vector{Float64} # n_timesteps
-    eues::Vector{Float64} # n_timesteps
+    lolps::MeanVarianceVector # n_timesteps
+    eues::MeanVarianceVector # n_timesteps
 
-    generation_dEUEs::Vector{Float64} # n_timesteps
-    storage_power_dEUEs::Vector{Float64} # n_storages
-    storage_energy_dEUEs::Vector{Float64} # n_storages
+    lole::MeanVariance
+    eue::MeanVariance
+
+    generation_dEUEs::MeanVarianceVector # n_timesteps
+    storage_power_dEUEs::MeanVarianceVector # n_storages
+    storage_energy_dEUEs::MeanVarianceVector # n_storages
 
     function SingleThreadAdequacyResult(params::AdequacyParams)
 
         n_timesteps = params.n_timesteps
         n_storages = params.n_storages
 
-        lolps = zeros(n_timesteps)
-        eues = zeros(n_timesteps)
+        lolps = MeanVarianceVector(n_timesteps)
+        eues = MeanVarianceVector(n_timesteps)
 
-        generation_dEUEs = zeros(n_timesteps)
-        storage_power_dEUEs = zeros(n_storages)
-        storage_energy_dEUEs = zeros(n_storages)
+        lole = MeanVariance()
+        eue = MeanVariance()
 
-        return new(
-            0, lolps, eues,
-            generation_dEUEs, storage_power_dEUEs, storage_energy_dEUEs)
+        generation_dEUEs = MeanVarianceVector(n_timesteps)
+        storage_power_dEUEs = MeanVarianceVector(n_storages)
+        storage_energy_dEUEs = MeanVarianceVector(n_storages)
+
+        return new(0, lolps, eues, lole, eue,
+                   generation_dEUEs, storage_power_dEUEs, storage_energy_dEUEs)
 
     end
 
@@ -76,12 +85,15 @@ function merge!(
 
     result.n_samples += other.n_samples
 
-    result.lolps += other.lolps
-    result.eues += other.eues
+    merge!(result.lolps, other.lolps)
+    merge!(result.eues, other.eues)
 
-    result.generation_dEUEs += other.generation_dEUEs
-    result.storage_power_dEUEs += other.storage_power_dEUEs
-    result.storage_energy_dEUEs += other.storage_energy_dEUEs
+    merge!(result.lole, other.lole)
+    merge!(result.eue, other.eue)
+
+    merge!(result.generation_dEUEs, other.generation_dEUEs)
+    merge!(result.storage_power_dEUEs, other.storage_power_dEUEs)
+    merge!(result.storage_energy_dEUEs, other.storage_energy_dEUEs)
 
     return
 
@@ -92,51 +104,128 @@ struct AdequacyResult
     times::TimeIndices
 
     demand::Array{Float64, 3} # N_HOURS_IN_DAY x n_days x n_investment_years
-    lolps::Array{Float64, 3} # N_HOURS_IN_DAY x n_days x n_investment_years
+
+    lolps::Array{Float64, 3}  # N_HOURS_IN_DAY x n_days x n_investment_years
+    lolps_stderr::Array{Float64, 3}
+
     eues::Array{Float64, 3} # N_HOURS_IN_DAY x n_days x n_investment_years
+    eues_stderr::Array{Float64, 3}
+
+    lole::Vector{Float64} # n_investment_years
+    lole_stderr::Vector{Float64}
+
+    eue::Vector{Float64} # n_investment_years
+    eue_stderr::Vector{Float64}
 
     generation_dEUEs::Array{Float64, 3} # N_HOURS_IN_DAY x n_days x n_investment_years
+    generation_dEUEs_stderr::Array{Float64, 3}
+
     storage_power_dEUEs::Matrix{Float64} # n_storages x n_investment_years
+    storage_power_dEUEs_stderr::Matrix{Float64}
+
     storage_energy_dEUEs::Matrix{Float64} # n_storages x n_investment_years
+    storage_energy_dEUEs_stderr::Matrix{Float64}
 
     function AdequacyResult(
         prob::AdequacyProblem, results::Vector{SingleThreadAdequacyResult})
 
         n_days = n_dispatch_days(prob.sys.times)
         n_invyears = n_investment_years(prob.sys.times)
+
+        # TODO: We assume this stays constant, which it does,
+        #       but something cleaner would be nice
         n_storages = length(first(results).storage_power_dEUEs)
 
         lolps = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
+        lolps_stderr = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
+
         eues = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
+        eues_stderr = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
+
+        lole = Vector{Float64}(undef, n_invyears)
+        lole_stderr = Vector{Float64}(undef, n_invyears)
+
+        eue = Vector{Float64}(undef, n_invyears)
+        eue_stderr = Vector{Float64}(undef, n_invyears)
 
         generation_dEUEs = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
+        generation_dEUEs_stderr = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
+
         stor_power_dEUEs = Matrix{Float64}(undef, n_storages, n_invyears)
+        stor_power_dEUEs_stderr = Matrix{Float64}(undef, n_storages, n_invyears)
+
         stor_energy_dEUEs = Matrix{Float64}(undef, n_storages, n_invyears)
+        stor_energy_dEUEs_stderr = Matrix{Float64}(undef, n_storages, n_invyears)
 
         for (i, result) in enumerate(results)
 
             n = result.n_samples
 
-            lolps[:, :, i] .=
-                reshape(result.lolps, N_HOURS_IN_DAY, n_days) ./ n
+            store_results!(lolps, lolps_stderr, result.lolps, i, n_days)
+            store_results!(eues, eues_stderr, result.eues, i, n_days)
 
-            eues[:, :, i] .=
-                reshape(result.eues, N_HOURS_IN_DAY, n_days) ./ n
+            store_results!(lole, lole_stderr, result.lole, i)
+            store_results!(eue, eue_stderr, result.eue, i)
 
-            generation_dEUEs[:, :, i] .=
-                reshape(result.generation_dEUEs, N_HOURS_IN_DAY, n_days) ./ n
+            store_results!(generation_dEUEs, generation_dEUEs_stderr,
+                           result.generation_dEUEs, i, n_days)
 
-            stor_power_dEUEs[:, i] .= result.storage_power_dEUEs ./ n
+            store_results!(stor_power_dEUEs, stor_power_dEUEs_stderr,
+                           result.storage_power_dEUEs, i)
 
-            stor_energy_dEUEs[:, i] .= result.storage_energy_dEUEs ./ n
+            store_results!(stor_energy_dEUEs, stor_energy_dEUEs_stderr,
+                           result.storage_energy_dEUEs, i)
 
         end
 
         return new(
             prob.sys.times, prob.sys.demand * powerunits_MW,
-            lolps, eues, generation_dEUEs, stor_power_dEUEs, stor_energy_dEUEs)
+            lolps, lolps_stderr, eues, eues_stderr,
+            lole, lole_stderr, eue, eue_stderr,
+            generation_dEUEs, generation_dEUEs_stderr,
+            stor_power_dEUEs, stor_power_dEUEs_stderr,
+            stor_energy_dEUEs, stor_energy_dEUEs_stderr)
 
     end
+
+end
+
+function store_results!(
+    dst_mean::Array{Float64, 3}, dst_std::Array{Float64, 3},
+    src::MeanVarianceVector, invyear::Int, n_days::Int)
+
+   src_mean, src_std = mean_stderr(src)
+
+   dst_mean[:, :, invyear] = reshape(src_mean, N_HOURS_IN_DAY, n_days)
+   dst_std[:, :, invyear] = reshape(src_std, N_HOURS_IN_DAY, n_days)
+
+   return
+
+end
+
+function store_results!(
+    dst_mean::Matrix{Float64}, dst_std::Matrix{Float64},
+    src::MeanVarianceVector, invyear::Int)
+
+   src_mean, src_std = mean_stderr(src)
+
+   dst_mean[:, invyear] = src_mean
+   dst_std[:, invyear] = src_std
+
+   return
+
+end
+
+function store_results!(
+    dst_mean::Vector{Float64}, dst_std::Vector{Float64},
+    src::MeanVariance, invyear::Int)
+
+   src_mean, src_std = mean_stderr(src)
+
+   dst_mean[invyear] = src_mean
+   dst_std[invyear] = src_std
+
+   return
 
 end
 
@@ -166,12 +255,15 @@ function solve_singlethreaded(
         result.n_samples += 1
 
         ues = unserved(opt)
-        result.eues .+= ues
-        result.lolps .+= ues .> 1e-3
+        update!(result.eues, ues)
+        update!(result.lolps, float.(ues .> 1e-3))
 
-        result.generation_dEUEs .+= grid_dual(opt)
-        result.storage_power_dEUEs .+= stor_power_dual(opt)
-        result.storage_energy_dEUEs .+= stor_energy_dual(opt)
+        update!(result.eue, sum(ues))
+        update!(result.lole, float.(sum(ues .> 1e-3)))
+
+        update!(result.generation_dEUEs, grid_dual(opt))
+        update!(result.storage_power_dEUEs, stor_power_dual(opt))
+        update!(result.storage_energy_dEUEs, stor_energy_dual(opt))
 
     end
 
@@ -211,7 +303,7 @@ function solve(prob::AdequacyProblem)
 
         else
 
-            solve_singlethreaded(prob, samples_i, results_i)
+            solve_singlethreaded(prob, params, samples_i, results_i)
             result_i = take!(results_i)
             close(results_i)
 
@@ -225,11 +317,21 @@ function solve(prob::AdequacyProblem)
 
 end
 
+neue(res::AdequacyResult, i::Int) =
+    res.eue[i] / sum(res.demand[:, :, i]) * 1_000_000
+
 neues(res::AdequacyResult) =
     [neue(res, i) for i in 1:n_investment_years(res.times)]
 
-neue(res::AdequacyResult, i::Int) =
-    sum(res.eues[:, :, i]) / sum(res.demand[:, :, i]) * 1_000_000
+lole_estimate(res::AdequacyResult, i::Int) = (res.lole[i], res.lole_stderr[i])
+
+eue_estimate(res::AdequacyResult, i::Int) = (res.eue[i], res.eue_stderr[i])
+
+neue_estimate(res::AdequacyResult, i::Int) =
+    eue_estimate(res, i) ./ sum(res.demand[:, :, i]) .* 1_000_000
+
+neue_estimates(res::AdequacyResult) =
+    [neue_estimate(res, i) for i in 1:n_investment_years(res.times)]
 
 include("export.jl")
 

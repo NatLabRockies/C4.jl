@@ -53,9 +53,9 @@ max_eues = [
 # For iterate_ra_cem, which takes NEUE
 max_neue = 10.
 
-ram = AdequacyProblem(sys, optimizer, samples=1000)
+ram = AdequacyProblem(sys, optimizer, samples=1000, threaded=false)
 ram_results = solve(ram)
-println("\nBase NEUEs = ", neues(ram_results))
+println("\nBase NEUEs = ", neue_estimates(ram_results))
 
 # Formulate and solve a one-off CEM without risk curves
 
@@ -71,7 +71,7 @@ println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram) # Dig into these results
-println("\nNEUEs = ", neues(ram_results))
+println("\nNEUEs = ", neue_estimates(ram_results))
 
 eue_params = [[EUECuttingPlaneParams(cem.builds, ram_results, i)] for i in 1:2]
 
@@ -85,7 +85,7 @@ println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram)
-println("\nNEUEs = ", neues(ram_results))
+println("\nNEUEs = ", neue_estimates(ram_results))
 
 for i in 1:2
     push!(eue_params[i], EUECuttingPlaneParams(cem.builds, ram_results, i))
@@ -101,7 +101,7 @@ println("System Cost: ", value(cost(cem)))
 
 ram = AdequacyProblem(sys_built, optimizer, samples=1000)
 ram_results = solve(ram)
-println("\nNEUEs = ", neues(ram_results))
+println("\nNEUEs = ", neue_estimates(ram_results))
 
 println("\nSingle-region Iterative CEM:")
 cem, ram, pcm = iterate_ra_cem(
@@ -113,7 +113,7 @@ cem, ram, pcm = iterate_ra_cem(
 sys_built = SystemParams(cem)
 display(sys_built)
 
-println("NEUEs: ", neues(ram))
+println("NEUEs: ", neue_estimates(ram))
 println()
 
 println("Total Capex: ", value(capex(cem)))
@@ -135,7 +135,7 @@ println("System Emissions Intensity: ", value(emissions_intensity(cem)))
 
 ram = AdequacyProblem(sys_built, optimizer, samples=100_000)
 ram_results = solve(ram)
-println("\nNEUEs = ", neues(ram_results))
+println("\nNEUEs = ", neue_estimates(ram_results))
 
 pcm = DispatchProblem(sys_built, 1, first(repeatedchrono), optimizer,
                       voll=voll, co2_max_intensity=50., co2_offset_price=100.,
