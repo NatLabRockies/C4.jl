@@ -92,9 +92,6 @@ function sweep_iterate_neue(
         end
 
         display(sys_built)
-        println("LOLPs: ", ram_result.lolps)
-        println("EUEs: ", ram_result.eues)
-
         println("Capex: ", value(capex(cem)))
         println("Opex: ", value(opex(cem)))
         println("System Cost: ", value(cost(cem)))

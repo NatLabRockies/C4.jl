@@ -41,7 +41,7 @@ function sweep_iterate_elcc(
             elcc_requirement / powerunits_MW, elcc_planes)
 
         if persist
-            req_outfile= "$(outfile_prefix)_$(elcc_requirement).db"
+            req_outfile= "$(outfile_prefix)_$(round(Int, elcc_requirement)).db"
             store_start = now()
             con = DBInterface.connect(DuckDB.DB, req_outfile)
             store(con, sys)
@@ -99,9 +99,6 @@ function sweep_iterate_elcc(
         end
 
         display(sys_built)
-        println("LOLPs: ", ram_result.lolps)
-        println("EUEs: ", ram_result.eues)
-
         println("Capex: ", value(capex(cem)))
         println("Opex: ", value(opex(cem)))
         println("System Cost: ", value(cost(cem)))
