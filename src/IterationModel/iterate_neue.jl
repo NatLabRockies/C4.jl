@@ -2,7 +2,7 @@ function sweep_iterate_neue(
     sys::SystemParams, chronology::TimeProxyAssignment,
     neue_requirements::Vector{Float64}, optimizer; neue_tol::Float64=.001,
     nsamples::Int=1000, outfile_prefix::String="",
-    ra_optimizer=nothing)
+    ra_optimizer=nothing, threaded::Bool=true)
 
     if isnothing(ra_optimizer)
         ra_optimizer = optimizer
@@ -13,7 +13,7 @@ function sweep_iterate_neue(
     neue_factor = total_demand(sys) * 1e-6
 
     ram_start = now()
-    ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples)
+    ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples, threaded=threaded)
     ram_base_result = solve(ram)
     neue_base_val, neue_base_stderr = neue_estimate(ram_base_result)
     lole_base_val, lole_base_stderr = lole_estimate(ram_base_result)
@@ -61,7 +61,7 @@ function sweep_iterate_neue(
 
             ram_start = now()
             sys_built = SystemParams(cem)
-            ram = AdequacyProblem(sys_built, ra_optimizer, samples=nsamples)
+            ram = AdequacyProblem(sys_built, ra_optimizer, samples=nsamples, threaded=threaded)
             ram_result = solve(ram)
             neue_val, neue_stderr = neue_estimate(ram_result)
             lole_val, lole_stderr = lole_estimate(ram_result)

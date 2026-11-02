@@ -2,7 +2,7 @@ function sweep_iterate_elcc(
     sys::SystemParams, chronology::TimeProxyAssignment,
     elcc_requirements::Vector{Float64}, optimizer; ra_optimizer=nothing,
     elcc_neue_target=1.0, elcc_tol::Float64=.001,
-    nsamples::Int=1000, outfile_prefix::String="")
+    nsamples::Int=1000, outfile_prefix::String="", threaded::Bool=true)
 
     if isnothing(ra_optimizer)
         ra_optimizer = optimizer
@@ -14,7 +14,7 @@ function sweep_iterate_elcc(
     elcc_max_eue = elcc_neue_target * neue_factor * powerunits_MW
 
     ram_base_start = now()
-    ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples)
+    ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples, threaded=threaded)
     elcc_base_val, ram_base_result, elcc_ram_result =
         elcc(ram, maximum(sys.demand) * powerunits_MW, elcc_max_eue)
     neue_base_mean, neue_base_stderr = neue_estimate(ram_base_result)
@@ -65,7 +65,7 @@ function sweep_iterate_elcc(
 
             ram_start = now()
             sys_built = SystemParams(cem)
-            ram = AdequacyProblem(sys_built, ra_optimizer, samples=nsamples)
+            ram = AdequacyProblem(sys_built, ra_optimizer, samples=nsamples, threaded=threaded)
             elcc_val, ram_result, elcc_ram_result =
                 elcc(ram, elcc_params.elcc_min * powerunits_MW, elcc_max_eue)
             neue_mean, neue_stderr = neue_estimate(ram_result)
