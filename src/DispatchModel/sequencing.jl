@@ -67,17 +67,17 @@ co2(recurrence::DispatchRecurrence) =
 
 struct DispatchSequence{S <: DispatchableSystem}
 
-    time::DispatchProxyMapping
+    time::DispatchProxyMappings
 
     dispatches::Vector{SystemDispatch{S}}
-    recurrences::Vector{DispatchRecurrence{S}}
+    recurrences::Vector{Vector{DispatchRecurrence{S}}}
 
     co2_offsets::Union{JuMP.VariableRef,Nothing} # tonnes CO2
     co2_constraint::Union{JuMP_LessThanConstraintRef,Nothing} # tonnes CO2
     co2_offset_price::Float64 # $/tonne CO2
 
     function DispatchSequence(
-        m::JuMP.Model, system::S, invyear::Int, time::DispatchProxyMapping;
+        m::JuMP.Model, system::S, invyear::Int, time::DispatchProxyMappings;
         voll::Float64=NaN, co2_max::Float64=NaN, co2_offset_price::Float64=999.,
         unit_commitment::Bool=true
     ) where {S <: DispatchableSystem}
@@ -86,13 +86,16 @@ struct DispatchSequence{S <: DispatchableSystem}
                                      unit_commitment=unit_commitment)
                       for day in time.days]
 
-        recurrences = sequence_recurrences(m, system, dispatches, invyear, time)
+        recurrences = [
+            sequence_recurrences(m, system, dispatches, invyear, time, dy)
+            for dy in eachindex(time.mappings)]
 
         if isnan(co2_max)
             co2_offsets = co2_constraint = nothing
         else
             co2_offsets = @variable(m, lower_bound=0)
-            co2_total = sum(co2(recc) for recc in recurrences; init=0)
+            co2_total = sum(sum(co2(recc) for recc in dy_reccs; init=0)
+                            for dy_reccs in recurrences)
             co2_constraint = @constraint(m, co2_total - co2_offsets <= co2_max)
         end
 
@@ -105,7 +108,8 @@ end
 
 co2(sequence::DispatchSequence) =
     annualization_factor(sequence.time) *
-    sum(co2(recurrence) for recurrence in sequence.recurrences; init=0)
+    sum(sum(co2(recurrence) for recurrence in dy_recurrences; init=0)
+        for dy_recurrences in sequence.recurrences; init=0)
 
 co2_offset_cost(sequence::DispatchSequence) = if isnothing(sequence.co2_offsets)
     0.
@@ -115,19 +119,21 @@ end
 
 generation_cost(sequence::DispatchSequence) =
     annualization_factor(sequence.time) *
-    sum(cost(recurrence) for recurrence in sequence.recurrences; init=0)
+    sum(sum(cost(recurrence) for recurrence in dy_recurrences; init=0)
+    for dy_recurrences in sequence.recurrences)
 
 cost(sequence::DispatchSequence) =
     co2_offset_cost(sequence) + generation_cost(sequence)
 
 function sequence_recurrences(
     m::JuMP.Model, system::S, dispatches::Vector{SystemDispatch{S}},
-    invyear::Int, time::DispatchProxyMapping
+    invyear::Int, time::DispatchProxyMappings, mapping_idx::Int
 ) where S <: DispatchableSystem
 
-    sequence = deduplicate(time.mapping)
+    sequence = deduplicate(time.mappings[mapping_idx].mapping)
     recurrences = Vector{DispatchRecurrence{S}}(undef, length(sequence))
 
+    # TODO: Link first recurrence back to last
     prev_recurrence = nothing
 
     for (i, (p, repetitions)) in enumerate(sequence)

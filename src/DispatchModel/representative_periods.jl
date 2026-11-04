@@ -42,7 +42,17 @@ function medoid_timegrouping(sys::SystemParams, invyear::Int, grouper::Function)
 
     end
 
-    return DispatchProxyMapping(days, mapping)
+    mappings = Vector{DispatchProxyMapping}(undef, n_dispatch_years(sys.times))
+    startday = 0
+    endday = 0
+    for (dy, daycount) in enumerate(sys.times.dispatch_daycount)
+        startday = endday + 1
+        endday += daycount
+        range = startday:endday
+        mappings[dy] = DispatchProxyMapping(range, mapping[range])
+    end
+
+    return DispatchProxyMappings(days, mappings)
 
 end
 
@@ -77,7 +87,8 @@ function fullchronologyperiods(sys::SystemParams, dispyear::Int=0)
          DispatchDay("Y$y D$doy", d, sys.times))
      for d in range]
 
-    return DispatchProxyMapping(days, collect(eachindex(days)), range)
+    return DispatchProxyMappings(
+        days, [DispatchProxyMapping(range, collect(eachindex(days)))])
 
 end
 

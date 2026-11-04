@@ -54,7 +54,7 @@ mutable struct ExpansionProblem
 
     function ExpansionProblem(
         system::SystemParams,
-        chronologies::Vector{DispatchProxyMapping},
+        chronologies::Vector{DispatchProxyMappings},
         riskparams::Vector{Vector{EUECuttingPlaneParams}},
         eue_max::Vector{Float64}, # in powerunits_MWh
         optimizer;
@@ -80,7 +80,7 @@ mutable struct ExpansionProblem
                   "number of system investment years")
 
         n_hours_full = n_dispatch_hours(system.times)
-        all(c -> n_represented_hours(c) == n_hours_full, chronologies) ||
+        all(c -> sum(n_represented_hours(c)) == n_hours_full, chronologies) ||
             error("A time period dispatch proxy assignment is incompatible " *
                   "with the number of system dispatch timesteps")
 
@@ -104,7 +104,6 @@ mutable struct ExpansionProblem
             ReliabilityConstraints(m, builds, i, riskparams[i], eue_max[i])
             for i in eachindex(chronologies)]
 
-        # TODO: Incorporate WACC into objective function
         @objective(m, Min,
             npv_capex(builds, system.times, wacc, npv_year) +
             npv_opex(cost, dispatches, system.times, wacc, npv_year) +

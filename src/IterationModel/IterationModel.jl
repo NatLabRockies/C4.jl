@@ -17,7 +17,7 @@ import JuMP: value
 export iterate_ra_cem
 
 function iterate_ra_cem(
-    sys::SystemParams, base_chronologies::Vector{DispatchProxyMapping},
+    sys::SystemParams, base_chronologies::Vector{DispatchProxyMappings},
     max_neue::Float64, optimizer; neue_tol::Float64=.001,
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
     max_co2_intensity::Float64=NaN, # kg/MWh
@@ -90,9 +90,14 @@ function iterate_ra_cem(
 
         isnothing(prev_cem) || warmstart_builds!(cem, prev_cem)
 
-        # println("Recurrences:")
-        # for recc in cem.dispatch.recurrences
-        #     println(recc.repetitions, " x ", recc.dispatch.period.name)
+        # println("Dispatch Recurrences:")
+        # for (iy, seq) in enumerate(cem.dispatches)
+        #     for (dy, dy_recc) in enumerate(seq.recurrences)
+        #         println("InvYear ", iy, ", DispYear ", dy)
+        #         for recc in dy_recc
+        #             println("\t", recc.repetitions, " x ", recc.dispatch.period.name)
+        #         end
+        #     end
         # end
 
         solve!(cem)
@@ -206,7 +211,7 @@ end
 
 function add_stressperiod(
     sys::SystemParams, invyear::Int,
-    times::DispatchProxyMapping, adequacy::AdequacyResult;
+    times::DispatchProxyMappings, adequacy::AdequacyResult;
     skip_existing::Bool=false
 )
 
@@ -236,19 +241,16 @@ function add_stressperiod(
 
     new_days = [times.days; new_day]
 
-    new_mapping = copy(times.mapping)
-    new_mapping[new_day_idx] = length(new_days)
+    new_mappings = deepcopy(times.mappings)
 
-    return DispatchProxyMapping(new_days, new_mapping)
+    dy, ddoy = year_dayofyear(new_day_idx, sys.times)
+    new_mappings[dy].mapping[ddoy] = length(new_days)
+
+    return DispatchProxyMappings(new_days, new_mappings)
 
 end
 
 already_included(day_idx::Int, days::Vector{DispatchDay}) =
     any(d -> d.dispatchday_idx == day_idx, days)
-
-function represented_timeslices(time::DispatchProxyMapping, p::Int)
-    T = time.daylength
-    return [((d-1)*T+1):(d*T) for d in findall(isequal(p), time.days)]
-end
 
 end

@@ -1,54 +1,79 @@
+# The index of the day (2nd dimension) in a DispatchDataArray
+const DispatchDataDayIdx = Int
+
+# The index of a DispatchDay in DispatchProxyMappings.days
+const DispatchDayIdx = Int
+
 struct DispatchDay
 
     name::String
 
-    dispatchday_idx::Int
+    dispatchday_idx::DispatchDataDayIdx
 
     dispatchyear_idx::Int
     dispatchdayofyear_idx::Int
 
-    DispatchDay(name::String, d::Int, times::TimeIndices) =
+    DispatchDay(name::String, d::DispatchDataDayIdx, times::TimeIndices) =
         new(name, d, year_dayofyear(d, times)...)
 
 end
 
+"""
+Mapping defining relationship from represented days (`range`) into
+representative days (`mapping`). The latter is indexed relative to the parent
+`DispatchProxyMappings` days property. Used to define the recurrences in a
+DispatchSequence.
+"""
 struct DispatchProxyMapping
 
-    days::Vector{DispatchDay} # set of DispatchDays to be included in optimization
-    range::UnitRange{Int} # which subset of all days to consider
-    mapping::Vector{Int} # mapping from days in range into DispatchDays set
+    range::UnitRange{DispatchDataDayIdx} # which contiguous subset of all days to consider
+    mapping::Vector{DispatchDayIdx} # mapping from days in range into DispatchDay set
 
     function DispatchProxyMapping(
-        days::Vector{DispatchDay}, mapping::Vector{Int},
-        range::UnitRange{Int}=1:length(mapping))
-
-        n_days = length(days)
+        range::UnitRange{DispatchDataDayIdx}, mapping::Vector{DispatchDayIdx})
 
         length(mapping) == length(range) ||
                 error("Mapping length must match provided day range")
 
-        all(d -> 1 <= d <= n_days, mapping) ||
-                error("Invalid day index in day mapping")
-
-        all(day -> day.dispatchday_idx in range, days) ||
-                error("DispatchDays must be within the provided range")
-
-        new(days, range, mapping)
+        return new(range, mapping)
 
     end
 
 end
 
-n_decision_days(dpm::DispatchProxyMapping) =
-    length(dpm.days)
+struct DispatchProxyMappings
 
-n_represented_days(dpm::DispatchProxyMapping) =
-    length(dpm.mapping)
+    days::Vector{DispatchDay} # set of DispatchDays to be included in optimization
 
-n_decision_hours(dpm::DispatchProxyMapping) =
+    mappings::Vector{DispatchProxyMapping} # set of independent sequences referencing days
+
+    function DispatchProxyMappings(
+        days::Vector{DispatchDay},
+        mappings::Vector{DispatchProxyMapping})
+
+        n_days = length(days)
+
+        for mapping in mappings
+            all(d -> 1 <= d <= n_days, mapping.mapping) ||
+                    error("Invalid day index in day mapping")
+        end
+
+        new(days, mappings)
+
+    end
+
+end
+
+n_decision_days(dpms::DispatchProxyMappings) =
+    length(dpms.days)
+
+n_represented_days(dpms::DispatchProxyMappings) =
+    [length(dpm.mapping) for dpm in dpms.mappings]
+
+n_decision_hours(dpm::DispatchProxyMappings) =
     n_decision_days(dpm) * N_HOURS_IN_DAY
 
-n_represented_hours(dpm::DispatchProxyMapping) =
-    n_represented_days(dpm) * N_HOURS_IN_DAY
+n_represented_hours(dpm::DispatchProxyMappings) =
+    n_represented_days(dpm) .* N_HOURS_IN_DAY
 
-annualization_factor(dpm::DispatchProxyMapping) = 8766 / n_represented_hours(dpm)
+annualization_factor(dpm::DispatchProxyMappings) = 8766 / sum(n_represented_hours(dpm))

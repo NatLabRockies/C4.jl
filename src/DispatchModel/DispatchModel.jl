@@ -26,7 +26,7 @@ include("representative_periods.jl")
 include("dispatch.jl")
 include("sequencing.jl")
 
-export DispatchProblem, DispatchSequence, DispatchDay, DispatchProxyMapping,
+export DispatchProblem, DispatchSequence, DispatchDay, DispatchProxyMappings,
        singleperiod, seasonalperiods, monthlyperiods, weeklyperiods,
        seasonalperiods_byyear, monthlyperiods_byyear, weeklyperiods_byyear,
        dailyperiods, fullchronologyperiods,
@@ -43,10 +43,15 @@ struct DispatchProblem{D<:DispatchSequence}
     dispatch::D
 
     function DispatchProblem(
-        system::SystemParams, invyear::Int, periods::DispatchProxyMapping,
+        system::SystemParams, invyear::Int, periods::DispatchProxyMappings,
         optimizer; voll::Float64=NaN, co2_max_intensity::Float64=NaN,
         co2_offset_price::Float64=999., unit_commitment::Bool=true
     )
+
+       length(periods.mappings) == 1 ||
+           error("DispatchProblem only supports solving a single " *
+                 "DispatchSequence at a time. Formulate a separate " *
+                 "DispatchProblem for each desired sequence.")
 
         co2_max = co2_max_intensity * total_demand(system, invyear) *
                     powerunits_MW * 1e-3

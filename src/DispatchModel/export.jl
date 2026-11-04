@@ -114,10 +114,12 @@ function store(con::DBInterface.Connection, iter::Int, i::Int, seq::DispatchSequ
 end
 
 function store(appender::DispatchAppender, iter::Int, i::Int,
-               time::DispatchProxyMapping, times::TimeIndices)
+               time::DispatchProxyMappings, times::TimeIndices)
 
     reps = zeros(Int, length(time.days))
-    foreach(p_idx -> reps[p_idx] += 1, time.mapping)
+    for mapping in time.mappings
+        foreach(p_idx -> reps[p_idx] += 1, mapping.mapping)
+    end
     foreach((p, n) -> store(appender, iter, i, p, n, times), time.days, reps)
 
 end
