@@ -163,7 +163,7 @@ struct StorageDispatch{S<:DispatchableStorageTech}
         charge_max = @constraint(m, [t in 1:T], charge[t] <= capacity)
         discharge_max = @constraint(m, [t in 1:T], discharge[t] <= capacity)
 
-        e_net = @variable(m)
+        e_net = @variable(m, base_name="stor_ΔE_net[$(fullname)]")
         e_net_def = @constraint(m, e_net == eff * sum(charge) - 1/eff * sum(discharge))
 
         e_high = @variable(m, base_name="stor_ΔE_high[$(fullname)]")

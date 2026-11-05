@@ -1,33 +1,47 @@
-struct StorageDispatchRecurrence
+mutable struct StorageDispatchRecurrence
+
+    soc_last::JuMP.VariableRef
+    soc_last_definition::JuMP_EqualToConstraintRef
 
     emin_first::JuMP_LessThanConstraintRef
     emax_first::JuMP_LessThanConstraintRef
     emin_last::JuMP_LessThanConstraintRef
     emax_last::JuMP_LessThanConstraintRef
 
-    soc_last::JuMP_ExpressionRef
-
     function StorageDispatchRecurrence(
-        m::JuMP.Model,
-        prev_recurrence::Union{StorageDispatchRecurrence,Nothing},
-        storage::DispatchableStorageTech, dispatch::StorageDispatch,
-        repetitions::Int, invyear::Int)
+        m::JuMP.Model, storage::DispatchableStorageTech)
 
-        energy = maxenergy(storage, invyear) # TODO: Need to get invyear down to here!
+        soc_last = @variable(m, base_name="stor_ending_soc[" * name(storage) * "]")
 
-        soc0_first = isnothing(prev_recurrence) ? 0 : prev_recurrence.soc_last
-        soc0_last = soc0_first + (repetitions - 1) * dispatch.e_net
-
-        emin_first = @constraint(m, 0 <= soc0_first + dispatch.e_low)
-        emax_first = @constraint(m, soc0_first + dispatch.e_high <= energy)
-        emin_last = @constraint(m, 0 <= soc0_last + dispatch.e_low)
-        emax_last = @constraint(m, soc0_last + dispatch.e_high <= energy)
-
-        soc_last = soc0_first + repetitions * dispatch.e_net
-
-        new(emin_first, emax_first, emin_last, emax_last, soc_last)
+        # Other fields will be populated during second pass (setup_recurrence!)
+        new(soc_last)
 
     end
+
+end
+
+function setup_recurrence!(
+    m::JuMP.Model,
+    recurrence::StorageDispatchRecurrence,
+    prev_recurrence::StorageDispatchRecurrence,
+    storage::DispatchableStorageTech, dispatch::StorageDispatch,
+    repetitions::Int, invyear::Int)
+
+    energy = maxenergy(storage, invyear)
+
+    soc0_first = prev_recurrence.soc_last
+    soc0_last = soc0_first + (repetitions - 1) * dispatch.e_net
+
+    recurrence.soc_last_definition = @constraint(m,
+        recurrence.soc_last == soc0_first + repetitions * dispatch.e_net,
+        base_name="stor_ending_soc_definition[" * name(storage) * "]")
+
+    recurrence.emin_first = @constraint(m, 0 <= soc0_first + dispatch.e_low)
+    recurrence.emax_first = @constraint(m, soc0_first + dispatch.e_high <= energy)
+    recurrence.emin_last = @constraint(m, 0 <= soc0_last + dispatch.e_low)
+    recurrence.emax_last = @constraint(m, soc0_last + dispatch.e_high <= energy)
+
+    return
 
 end
 
@@ -39,24 +53,33 @@ struct DispatchRecurrence{S <: DispatchableSystem}
     storagetechs::Vector{StorageDispatchRecurrence}
 
     function DispatchRecurrence(
-        m::JuMP.Model, prev_recurrence::Union{DispatchRecurrence{S},Nothing},
-        system::S, dispatch::SystemDispatch{S}, repetitions::Int, invyear::Int
-    ) where S <: DispatchableSystem
+        m::JuMP.Model, system::S, dispatch::D, repetitions::Int
+    ) where {S <: DispatchableSystem, D <: SystemDispatch{S}}
 
-        prev_recurrence_stors = isnothing(prev_recurrence) ?
-            StorageDispatchRecurrence[] : prev_recurrence.storagetechs
-
-        stors = [
-            StorageDispatchRecurrence(
-                m, prev_storrecurrence, stor, stordispatch, repetitions, invyear)
-            for (prev_storrecurrence, stor, stordispatch)
-            in zip_longest(prev_recurrence_stors, storagetechs(system), dispatch.storagetechs)
-        ]
+        stors = [StorageDispatchRecurrence(m, stor)
+                 for stor in storagetechs(system)]
 
         new{S}(dispatch, repetitions, stors)
 
     end
 
+end
+
+function setup_recurrence!(
+    m::JuMP.Model, recurrence::R, prev_recurrence::R, system::S, invyear::Int
+) where { S <: DispatchableSystem, R <: DispatchRecurrence{S} }
+
+    for (s, stor) in enumerate(storagetechs(system))
+
+        setup_recurrence!(m,
+            recurrence.storagetechs[s],
+            prev_recurrence.storagetechs[s],
+            stor,
+            recurrence.dispatch.storagetechs[s],
+            recurrence.repetitions, invyear)
+
+    end
+   
 end
 
 cost(recurrence::DispatchRecurrence) =
@@ -133,17 +156,19 @@ function sequence_recurrences(
     sequence = deduplicate(time.mappings[mapping_idx].mapping)
     recurrences = Vector{DispatchRecurrence{S}}(undef, length(sequence))
 
-    # TODO: Link first recurrence back to last
-    prev_recurrence = nothing
+    # First pass - initialize recurrences
 
-    for (i, (p, repetitions)) in enumerate(sequence)
+    recurrences = [
+        DispatchRecurrence(m, system, dispatches[p], repetitions)
+        for (p, repetitions) in sequence]
 
-        recurrence = DispatchRecurrence(m, prev_recurrence, system,
-                                        dispatches[p], repetitions, invyear)
+    # Second pass - wire up constraints
 
-        recurrences[i]  = recurrence
+    prev_recurrence = last(recurrences)
+
+    for recurrence in recurrences
+        setup_recurrence!(m, recurrence, prev_recurrence, system, invyear)
         prev_recurrence = recurrence
-
     end
 
     return recurrences
