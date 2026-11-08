@@ -36,10 +36,11 @@ function iterate_ra_cem(
     persist = length(outfile) > 0
     timeout += time()
 
-    demands = [total_demand(sys, i) for i in eachindex(base_chronologies)]
+    avg_annual_energies = [
+        avg_annual_energy(sys, i) for i in eachindex(base_chronologies)]
 
-    max_eues = max_neue .* demands .* 1e-6
-    max_co2s = max_co2_intensity .* (demands .* powerunits_MW) .* 1e-3 # in tonnes
+    max_eues = max_neue .* avg_annual_energies .* 1e-6 # in avg annual powerunits_MWh
+    max_co2s = max_co2_intensity .* (avg_annual_energies .* powerunits_MW) .* 1e-3 # in avg annual tonnes
 
     ram_start = now()
     ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples)

@@ -44,10 +44,10 @@ solve!(pcm)
 # Note that ExpansionProblem takes its target in terms of
 # unnormalized EUE and powerunits_MW!
 # Nonzero values need to be scaled appropriately
-# Here total_demand is already in powerunits_MW
+# Here avg_annual_energy is already in powerunits_MW
 max_eues = [
-    total_demand(sys, 1) / 100_000 # 2030 10 ppm
-    total_demand(sys, 2) / 100_000 # 2050 10 ppm
+    avg_annual_energy(sys, 1) / 100_000 # 2030 10 ppm
+    avg_annual_energy(sys, 2) / 100_000 # 2050 10 ppm
 ]
 
 # For iterate_ra_cem, which takes NEUE

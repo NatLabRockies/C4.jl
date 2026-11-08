@@ -47,12 +47,12 @@ struct AdequacyParams
 
 end
 
-function AdequacyParams(sys::SystemParams, invyear::Int)
+function AdequacyParams(sys::SystemParams, dayrange::UnitRange{Int}, invyear::Int)
 
-    demand = vec(sys.demand[:, :, invyear]) .* powerunits_MW
+    demand = vec(sys.demand[:, dayrange, invyear]) .* powerunits_MW
 
     generators_capacity, generators_lambda, generators_mu =
-        load_generators(sys, invyear)
+        load_generators(sys, dayrange, invyear)
 
     storages = load_storages(sys, invyear)
 
@@ -65,9 +65,9 @@ end
 
 # TODO: Convert to generating AdequacyProblem from a generic DispatchableSystem
 #       (not just SystemParams - allows direct SystemExpansion conversion as well)
-function load_generators(sys::SystemParams, i::Int)
+function load_generators(sys::SystemParams, dayrange::UnitRange{Int}, i::Int)
 
-    n_timesteps = n_dispatch_hours(sys.times)
+    n_timesteps = length(dayrange) * N_HOURS_IN_DAY
     n_gens, has_variable = count_gens(sys, i)
 
     generators_capacity = Matrix{Float64}(undef, n_gens, n_timesteps)
@@ -77,13 +77,13 @@ function load_generators(sys::SystemParams, i::Int)
     g_last = 0
 
     for tech in sys.thermaltechs_existing
-        tech_ratedcap = vec(tech.rating[:, :, i]) .* tech.unit_size .* powerunits_MW
+        tech_ratedcap = vec(tech.rating[:, dayrange, i]) .* tech.unit_size .* powerunits_MW
         for site in tech.sites
             for _ in 1:site.units[i]
                 g_last += 1
                 generators_capacity[g_last, :] .= tech_ratedcap
-                generators_lambda[:, g_last] .= vec(site.λ[:, :, i])
-                generators_mu[:, g_last] .= vec(site.μ[:, :, i])
+                generators_lambda[:, g_last] .= vec(site.λ[:, dayrange, i])
+                generators_mu[:, g_last] .= vec(site.μ[:, dayrange, i])
             end
         end
     end
@@ -95,7 +95,7 @@ function load_generators(sys::SystemParams, i::Int)
         for tech in sys.variabletechs_existing
             for site in tech.sites
                 variable_capacity .+= site.capacity[i] .* powerunits_MW .*
-                        vec(site.availability[:, :, i])
+                        vec(site.availability[:, dayrange, i])
             end
         end
 

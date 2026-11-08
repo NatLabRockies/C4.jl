@@ -117,7 +117,8 @@ struct DispatchSequence{S <: DispatchableSystem}
             co2_offsets = co2_constraint = nothing
         else
             co2_offsets = @variable(m, lower_bound=0)
-            co2_total = sum(sum(co2(recc) for recc in dy_reccs; init=0)
+            co2_total = annualization_factor(time) *
+                        sum(sum(co2(recc) for recc in dy_reccs; init=0)
                             for dy_reccs in recurrences)
             co2_constraint = @constraint(m, co2_total - co2_offsets <= co2_max)
         end

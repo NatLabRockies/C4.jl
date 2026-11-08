@@ -56,9 +56,9 @@ mutable struct ExpansionProblem
         system::SystemParams,
         chronologies::Vector{DispatchProxyMappings},
         riskparams::Vector{Vector{EUECuttingPlaneParams}},
-        eue_max::Vector{Float64}, # in powerunits_MWh
+        eue_max::Vector{Float64}, # in annualized powerunits_MWh
         optimizer;
-        co2_max::Vector{Float64}=Float64[], # in annual tonnes CO2
+        co2_max::Vector{Float64}=Float64[], # in annualized tonnes CO2
         co2_offset_price::Float64=NaN, # $/tonne CO2
         cem_voll::Float64=NaN, # $/MWh, NaN = hard power balance (no slack)
         unit_commitment::Bool=true,

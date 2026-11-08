@@ -44,6 +44,9 @@ demand(sys::SystemParams, invyear::Int, day::Int, hour::Int) =
 
 total_demand(sys::SystemParams, invyear::Int) = sum(sys.demand[:, :, invyear])
 
+avg_annual_energy(sys::SystemParams, invyear::Int) =
+    total_demand(sys, invyear) / n_dispatch_years(sys.times)
+
 thermaltechs(sys::SystemParams) = sys.thermaltechs_existing
 variabletechs(sys::SystemParams) = sys.variabletechs_existing
 storagetechs(sys::SystemParams) = sys.storagetechs_existing

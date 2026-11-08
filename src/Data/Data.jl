@@ -19,9 +19,11 @@ export TimeIndices,
        VariableExistingParams, VariableExistingSiteParams,
        VariableCandidateParams, VariableCandidateSiteParams,
        StorageExistingParams, StorageExistingSiteParams, StorageCandidateParams,
-       SystemParams, total_demand, annualization_factor,
+       SystemParams, total_demand, avg_annual_energy, annualization_factor,
        year_dayofyear, days, n_investment_years, n_dispatch_years,
-       n_dispatch_days, n_dispatch_hours, npv_opex, npv_capex,
+       n_dispatch_days, n_dispatch_hours,
+       dispatch_year_dayranges, dayrange_to_hourrange,
+       npv_opex, npv_capex,
        store_iteration, store_iteration_step
 
 """

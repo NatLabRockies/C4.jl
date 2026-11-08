@@ -12,6 +12,26 @@ n_dispatch_days(tidxs::TimeIndices) = sum(tidxs.dispatch_daycount)
 n_dispatch_hours(tidxs::TimeIndices) = n_dispatch_days(tidxs) * N_HOURS_IN_DAY
 n_datapoints(tidxs::TimeIndices) = n_investment_years(tidxs) * n_dispatch_hours(tidxs)
 
+function dispatch_year_dayranges(tidxs::TimeIndices)
+
+    ranges = Vector{UnitRange{Int}}(undef, n_dispatch_years(tidxs))
+
+    startday = 0
+    endday = 0
+
+    for (dy, daycount) in enumerate(tidxs.dispatch_daycount)
+        startday = endday + 1
+        endday += daycount
+        ranges[dy] = startday:endday
+    end
+
+    return ranges
+
+end
+
+dayrange_to_hourrange(range::UnitRange{Int}) =
+    (N_HOURS_IN_DAY * (first(range)-1) + 1) : (N_HOURS_IN_DAY * last(range))
+
 dayidx(dispatch_year::Int, dispatch_dayofyear::Int, tidxs::TimeIndices) =
     sum(tidxs.dispatch_daycount[1:(dispatch_year-1)], init=0) + dispatch_dayofyear
 

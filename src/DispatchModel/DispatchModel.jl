@@ -53,8 +53,8 @@ struct DispatchProblem{D<:DispatchSequence}
                  "DispatchSequence at a time. Formulate a separate " *
                  "DispatchProblem for each desired sequence.")
 
-        co2_max = co2_max_intensity * total_demand(system, invyear) *
-                    powerunits_MW * 1e-3
+        co2_max = co2_max_intensity * avg_annual_energy(system, invyear) *
+                    powerunits_MW * 1e-3 # in annual tonnes
 
         m = JuMP.direct_model(optimizer)
 

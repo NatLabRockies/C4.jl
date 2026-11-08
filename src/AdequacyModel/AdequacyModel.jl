@@ -1,6 +1,6 @@
 module AdequacyModel
 
-import Base: length
+import Base: length, setindex!
 import Base.Threads: nthreads, @spawn
 
 import Dates: DateTime, Hour
@@ -58,10 +58,7 @@ mutable struct SingleThreadAdequacyResult
     storage_power_dEUEs::MeanVarianceVector # n_storages
     storage_energy_dEUEs::MeanVarianceVector # n_storages
 
-    function SingleThreadAdequacyResult(params::AdequacyParams)
-
-        n_timesteps = params.n_timesteps
-        n_storages = params.n_storages
+    function SingleThreadAdequacyResult(n_timesteps::Int, n_storages::Int)
 
         lolps = MeanVarianceVector(n_timesteps)
         eues = MeanVarianceVector(n_timesteps)
@@ -96,6 +93,39 @@ function merge!(
     merge!(result.storage_energy_dEUEs, other.storage_energy_dEUEs)
 
     return
+
+end
+
+function expect_samplecount!(res::SingleThreadAdequacyResult, count::Int)
+    res.lolps.n = count
+    res.eues.n = count
+    res.generation_dEUEs.n = count
+    return
+end
+
+function collect!(
+    overall::SingleThreadAdequacyResult,
+    subset::SingleThreadAdequacyResult,
+    range::UnitRange{Int})
+
+    # Collect the subsetted time series data directly into the overall result
+
+    overall.lolps[range] = subset.lolps
+    overall.eues[range] = subset.eues
+    overall.generation_dEUEs[range] = subset.generation_dEUEs
+
+    # The following time-aggregated results and are assumed to be weighted
+    # proportional to subset sample size, which, absent stratified sampling,
+    # means uniformly across all subsets (note this is slightly inconsistent
+    # with technology-level dEUE calculations elsewhere, which use the
+    # concatenation of time series data stored above and so are implicitly
+    # duration-weighted - the difference only matters when dispatch year
+    # lengths are substantially different
+
+    merge!(overall.lole, subset.lole)
+    merge!(overall.eue, subset.eue)
+    merge!(overall.storage_power_dEUEs, subset.storage_power_dEUEs)
+    merge!(overall.storage_energy_dEUEs, subset.storage_energy_dEUEs)
 
 end
 
@@ -245,7 +275,7 @@ function solve_singlethreaded(
     samples::Channel{Int}, results::Channel{SingleThreadAdequacyResult})
 
     opt = AdequacyOptimization(params, prob.optimizer)
-    result = SingleThreadAdequacyResult(params)
+    result = SingleThreadAdequacyResult(params.n_timesteps, params.n_storages)
 
     for i in samples
 
@@ -276,40 +306,58 @@ function solve(prob::AdequacyProblem)
     n_threads = prob.threaded ? nthreads() : 1
 
     n_invyears = n_investment_years(prob.sys.times)
+    n_timesteps_total = n_dispatch_hours(prob.sys.times)
+    n_storages = length(prob.sys.storagetechs_existing)
+
     results = Vector{SingleThreadAdequacyResult}(undef, n_invyears)
 
-    for i in eachindex(results)
+    println("Running RA checks...")
 
-        samples_i = Channel{Int}()
-        results_i = Channel{SingleThreadAdequacyResult}(n_threads)
+    for invyear in eachindex(results)
 
-        params = AdequacyParams(prob.sys, i)
+        result_invyear = SingleThreadAdequacyResult(n_timesteps_total, n_storages)
+        expect_samplecount!(result_invyear, prob.samples)
 
-        @spawn makeseeds(samples_i, prob.samples)
+        for (d, d_range) in enumerate(dispatch_year_dayranges(prob.sys.times))
 
-        if prob.threaded
+            println("Investment Year $invyear \t Dispatch Year $d")
 
-            for _ in 1:n_threads
-                @spawn solve_singlethreaded(prob, params, samples_i, results_i)
+            samples_in = Channel{Int}()
+            results_out = Channel{SingleThreadAdequacyResult}(n_threads)
+
+            params = AdequacyParams(prob.sys, d_range, invyear)
+
+            @spawn makeseeds(samples_in, prob.samples)
+
+            if prob.threaded
+
+                for _ in 1:n_threads
+                    @spawn solve_singlethreaded(prob, params, samples_in, results_out)
+                end
+
+                result_out = take!(results_out)
+
+                for _ in 2:n_threads
+                    merge!(result_out, take!(results_out))
+                end
+
+                close(results_out)
+
+            else
+
+                solve_singlethreaded(prob, params, samples_in, results_out)
+                result_out = take!(results_out)
+                close(results_out)
+
             end
 
-            result_i = take!(results_i)
-
-            for _ in 2:n_threads
-                merge!(result_i, take!(results_i))
-            end
-
-            close(results_i)
-
-        else
-
-            solve_singlethreaded(prob, params, samples_i, results_i)
-            result_i = take!(results_i)
-            close(results_i)
+            # TODO: Eventually collect results directly out of results Channel?
+            timesteps = dayrange_to_hourrange(d_range)
+            collect!(result_invyear, result_out, timesteps)
 
         end
 
-        results[i] = result_i
+        results[invyear] = result_invyear
 
     end
 
@@ -317,8 +365,11 @@ function solve(prob::AdequacyProblem)
 
 end
 
+avg_annual_energy(res::AdequacyResult, i::Int) =
+    sum(res.demand[:, :, i]) / n_dispatch_years(res.times)
+
 neue(res::AdequacyResult, i::Int) =
-    res.eue[i] / sum(res.demand[:, :, i]) * 1_000_000
+    res.eue[i] / avg_annual_energy(res, i) * 1_000_000
 
 neues(res::AdequacyResult) =
     [neue(res, i) for i in 1:n_investment_years(res.times)]
@@ -328,7 +379,7 @@ lole_estimate(res::AdequacyResult, i::Int) = (res.lole[i], res.lole_stderr[i])
 eue_estimate(res::AdequacyResult, i::Int) = (res.eue[i], res.eue_stderr[i])
 
 neue_estimate(res::AdequacyResult, i::Int) =
-    eue_estimate(res, i) ./ sum(res.demand[:, :, i]) .* 1_000_000
+    eue_estimate(res, i) ./ avg_annual_energy(res, i) .* 1_000_000
 
 neue_estimates(res::AdequacyResult) =
     [neue_estimate(res, i) for i in 1:n_investment_years(res.times)]

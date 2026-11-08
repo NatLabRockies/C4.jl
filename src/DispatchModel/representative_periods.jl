@@ -42,15 +42,9 @@ function medoid_timegrouping(sys::SystemParams, invyear::Int, grouper::Function)
 
     end
 
-    mappings = Vector{DispatchProxyMapping}(undef, n_dispatch_years(sys.times))
-    startday = 0
-    endday = 0
-    for (dy, daycount) in enumerate(sys.times.dispatch_daycount)
-        startday = endday + 1
-        endday += daycount
-        range = startday:endday
-        mappings[dy] = DispatchProxyMapping(range, mapping[range])
-    end
+    mappings = [
+        DispatchProxyMapping(range, mapping[range])
+        for range in dispatch_year_dayranges(sys.times)]
 
     return DispatchProxyMappings(days, mappings)
 

@@ -55,6 +55,19 @@ mutable struct MeanVarianceVector
 
 end
 
+function setindex!(
+    mv::MeanVarianceVector, subset::MeanVarianceVector, idx::UnitRange{Int})
+
+    mv.n == subset.n ||
+        error("Sample sizes must match when inserting from another MeanVarianceVector")
+
+    mv.mean[idx] = subset.mean
+    mv.M2[idx] = subset.M2
+
+    return subset
+
+end
+
 function update!(mv::MeanVarianceVector, xs::Vector{Float64})
 
     length(mv.mean) == length(xs) || error("Vector lengths must match")
