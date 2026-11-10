@@ -1,7 +1,7 @@
 struct FuelParams
     name::String
     cost::InvestmentDataArray{Float64} # $/MMBtu
-    co2_factor::Float64 # tonnes/MMBtu
+    co2_factor::Float64 # tonnes/MMBtu (converted from kg/MMBtu in input files)
 end
 
 struct ThermalExistingSiteParams

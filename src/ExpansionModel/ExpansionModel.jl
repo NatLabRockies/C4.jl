@@ -56,9 +56,9 @@ mutable struct ExpansionProblem
         system::SystemParams,
         chronologies::Vector{DispatchProxyMappings},
         riskparams::Vector{Vector{EUECuttingPlaneParams}},
-        eue_max::Vector{Float64}, # in annualized powerunits_MWh
+        eue_max::Vector{Float64}, # annualized powerunits_MWh
         optimizer;
-        co2_max::Vector{Float64}=Float64[], # in annualized tonnes CO2
+        co2_intensity_max::Vector{Float64}=Float64[], # kg/MWh
         co2_offset_price::Float64=NaN, # $/tonne CO2
         cem_voll::Float64=NaN, # $/MWh, NaN = hard power balance (no slack)
         unit_commitment::Bool=true,
@@ -75,7 +75,8 @@ mutable struct ExpansionProblem
             error("Nummber of EUE caps provided does not match " *
                   "number of system investment years")
 
-       iszero(length(co2_max)) || length(co2_max) == n_years_investment ||
+       iszero(length(co2_intensity_max)) ||
+       length(co2_intensity_max) == n_years_investment ||
             error("Nummber of emissions intensity caps provided does not match " *
                   "number of system investment years")
 
@@ -84,8 +85,8 @@ mutable struct ExpansionProblem
             error("A time period dispatch proxy assignment is incompatible " *
                   "with the number of system dispatch timesteps")
 
-        if iszero(length(co2_max))
-            co2_max = fill(NaN, n_years_investment)
+        if iszero(length(co2_intensity_max))
+            co2_intensity_max = fill(NaN, n_years_investment)
         end
 
         m = JuMP.direct_model(optimizer)
@@ -95,7 +96,8 @@ mutable struct ExpansionProblem
         dispatches = [
             DispatchSequence(m, builds, i, chronology,
                              voll=cem_voll,
-                             co2_max=co2_max[i],
+                             # convert from kg/MWh to tonnes/powerunits_MWh
+                             co2_intensity_max=co2_intensity_max[i] * powerunits_MW * 1e-3,
                              co2_offset_price=co2_offset_price,
                              unit_commitment=unit_commitment)
             for (i, chronology) in enumerate(chronologies)]
@@ -105,9 +107,11 @@ mutable struct ExpansionProblem
             for i in eachindex(chronologies)]
 
         @objective(m, Min,
-            npv_capex(builds, system.times, wacc, npv_year) +
-            npv_opex(cost, dispatches, system.times, wacc, npv_year) +
-            npv_opex(cost_fom, builds, system.times, wacc, npv_year)
+            npv_capex(builds, system.times, wacc=wacc, npv_year=npv_year) +
+            npv_yearly_recurring(annualized_cost, dispatches, system.times,
+                                 discount_rate=wacc, npv_year=npv_year) +
+            npv_yearly_recurring(cost_fom, builds, system.times,
+                                 discount_rate=wacc, npv_year=npv_year)
             )
 
         return new(m, system, builds, dispatches, reliabilityconstraints)
@@ -158,50 +162,47 @@ function solve!(prob::ExpansionProblem)
 
 end
 
-# TODO: Is it more useful to report these outcomes (especially relative ones
-# like carbon intensity and LCOE) by investment year, rather than in aggregate?
+# Note that opex includes FO&M and any carbon offset costs
+opex(prob::ExpansionProblem; discount_rate::Float64=0., npv_year::Int=0) =
+    npv_yearly_recurring(annualized_cost, prob.dispatches, prob.system.times,
+                         discount_rate=discount_rate, npv_year=npv_year) +
+    npv_yearly_recurring(cost_fom, prob.builds, prob.system.times,
+                         discount_rate=discount_rate, npv_year=npv_year)
 
-# Note that opex includes any carbon offset costs
-opex(prob::ExpansionProblem; discount_rate::Float64=0., npv_year::Int=2025) =
-    npv_opex(cost, prob.dispatches, prob.system.times, discount_rate, npv_year) +
-    # npv_opex(cost_fom, prob.system, prob.system.times, discount_rate, npv_year) +
-    npv_opex(cost_fom, prob.builds, prob.system.times, discount_rate, npv_year)
+capex(prob::ExpansionProblem; wacc::Float64=0., npv_year::Int=0) =
+    npv_capex(prob.builds, prob.system.times, wacc=wacc, npv_year=npv_year)
 
-capex(prob::ExpansionProblem; wacc::Float64=0., npv_year::Int=2025) =
-    npv_capex(prob.builds, prob.system.times, wacc, npv_year)
-
-# Capex is annualized, so scale carbon offset cost to approximate an annual cost
-co2_offset_cost(prob::ExpansionProblem; discount_rate::Float64=0., npv_year::Int=2025) =
-    npv_opex(co2_offset_cost, prob.dispatches, prob.system.times, discount_rate, npv_year)
+co2_offset_cost(
+    prob::ExpansionProblem; discount_rate::Float64=0., npv_year::Int=0) =
+    npv_yearly_recurring(annualized_co2_offset_cost, prob.dispatches,
+                        prob.system.times,
+                        discount_rate=discount_rate, npv_year=npv_year)
 
 cost(prob::ExpansionProblem) = capex(prob) + opex(prob)
 
 """
-CO2 emissions in annualized tonnes
+Cumulative annualized CO2 emissions in tonnes
 """
 co2(prob::ExpansionProblem) =
-        npv_opex(co2, prob.dispatches, prob.system.times, 0.0, 2025)
+        npv_yearly_recurring(annualized_co2, prob.dispatches, prob.system.times)
 
 function lcoe(prob::ExpansionProblem)
 
-    # Note: total demand used here is the full-chronology demand annualized,
-    #       not necessarily what economic dispatch sees
-    demand = npv_opex(total_demand, prob.system, prob.system.times, 0.0, 2025) *
-                    powerunits_MW * annualization_factor(prob.system.times)
+    demand = npv_yearly_recurring(annualized_demand, prob.dispatches, prob.system.times) *
+                    powerunits_MW
 
     return cost(prob) / demand
 
 end
 
+# TODO: Report by investment year instead / as well?
 """
 System emissions intensity in kg/MWh (g/kWh)
 """
 function emissions_intensity(prob::ExpansionProblem)
 
-    # Note: total demand used here is the full-chronology demand annualized,
-    #       not necessarily what economic dispatch sees
-    demand = npv_opex(total_demand, prob.system, prob.system.times, 0.0, 2025) *
-                    powerunits_MW * annualization_factor(prob.system.times)
+    demand = npv_yearly_recurring(annualized_demand, prob.dispatches, prob.system.times) *
+                    powerunits_MW
 
     # Convert CO2 from tonnes to kg
     return co2(prob) * 1e3 / demand

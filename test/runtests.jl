@@ -108,7 +108,7 @@ cem, ram, pcm = iterate_ra_cem(
     sys, repeatedchrono, max_neue, optimizer,
     nsamples=100_000, check_dispatch_invyears=[1 ,2], check_dispatch_voll=voll,
     outfile=timestamp * ".db", unit_commitment=true,
-    max_co2_intensity=50., co2_offset_price=100.)
+    co2_intensity_max=[50., 50.], co2_offset_price=100.)
 
 sys_built = SystemParams(cem)
 display(sys_built)
@@ -138,14 +138,14 @@ ram_results = solve(ram)
 println("\nNEUEs = ", neue_estimates(ram_results))
 
 pcm = DispatchProblem(sys_built, 1, first(repeatedchrono), optimizer,
-                      voll=voll, co2_max_intensity=50., co2_offset_price=100.,
+                      voll=voll, co2_intensity_max=50., co2_offset_price=100.,
                       unit_commitment=true)
 solve!(pcm)
 println("2030 Operating Cost: ", value(cost(pcm)))
 println("2030 Carbon Offset Cost (included in opex): ", value(co2_offset_cost(pcm)))
 
 pcm = DispatchProblem(sys_built, 2, last(repeatedchrono), optimizer,
-                      voll=voll, co2_max_intensity=50., co2_offset_price=100.,
+                      voll=voll, co2_intensity_max=50., co2_offset_price=100.,
                       unit_commitment=true)
 solve!(pcm)
 println("2050 Operating Cost: ", value(cost(pcm)))

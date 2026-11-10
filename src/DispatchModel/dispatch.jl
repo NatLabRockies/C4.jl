@@ -275,7 +275,9 @@ end
 
 name(dispatch::SystemDispatch) = name(dispatch.system)
 
-demand(dispatch::SystemDispatch, t::Int) = demand(dispatch.system, t)
+demand(dispatch::SystemDispatch) = sum(
+    demand(dispatch.system, dispatch.invyear, dispatch.period.dispatchday_idx, h)
+    for h in 1:N_HOURS_IN_DAY)
 
 function cost(dispatch::SystemDispatch)
 

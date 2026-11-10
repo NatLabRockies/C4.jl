@@ -21,7 +21,7 @@ function iterate_ra_cem(
     max_neue::Float64, optimizer; ra_optimizer=nothing,
     neue_tol::Float64=.001,
     nsamples::Int=1000, skip_existing_stress_periods::Bool=false,
-    max_co2_intensity::Float64=NaN, # kg/MWh
+    co2_intensity_max::Vector{Float64}=Float64[], # kg/MWh
     co2_offset_price::Float64=9999., # $/tonne CO2
     timeout::Float64=Inf, first_feasible::Bool=true,
     aspp::Bool=true, endog_risk::Bool=true, outfile::String="",
@@ -38,9 +38,7 @@ function iterate_ra_cem(
 
     avg_annual_energies = [
         avg_annual_energy(sys, i) for i in eachindex(base_chronologies)]
-
     max_eues = max_neue .* avg_annual_energies .* 1e-6 # in avg annual powerunits_MWh
-    max_co2s = max_co2_intensity .* (avg_annual_energies .* powerunits_MW) .* 1e-3 # in avg annual tonnes
 
     ram_start = now()
     ram = AdequacyProblem(sys, ra_optimizer, samples=nsamples)
@@ -89,7 +87,8 @@ function iterate_ra_cem(
 
         cem = ExpansionProblem(sys, chronologies, eue_estimator, max_eues,
                                optimizer,
-                               co2_max=max_co2s, co2_offset_price=co2_offset_price,
+                               co2_intensity_max=co2_intensity_max,
+                               co2_offset_price=co2_offset_price,
                                unit_commitment=unit_commitment,
                                wacc=wacc,
                                cem_voll=cem_voll)
@@ -182,12 +181,16 @@ function iterate_ra_cem(
 
         for i in check_dispatch_invyears
 
+            co2_limit = length(co2_intensity_max) > 0 ? co2_intensity_max[i] : NaN
+
             for dy in 1:n_dispatch_years(sys_built.times)
 
                 yearchrono = fullchronologyperiods(sys_built, dy)
 
                 pcm = DispatchProblem(
                     sys_built, i, yearchrono, optimizer;
+                    co2_intensity_max=co2_limit,
+                    co2_offset_price=co2_offset_price,
                     voll=check_dispatch_voll,
                     unit_commitment=false)
 

@@ -35,8 +35,6 @@ dayrange_to_hourrange(range::UnitRange{Int}) =
 dayidx(dispatch_year::Int, dispatch_dayofyear::Int, tidxs::TimeIndices) =
     sum(tidxs.dispatch_daycount[1:(dispatch_year-1)], init=0) + dispatch_dayofyear
 
-annualization_factor(times::TimeIndices) = 8766 / n_dispatch_hours(times)
-
 function year_dayofyear(day_idx::Int, tidxs::TimeIndices)
 
     y = 0
@@ -82,9 +80,12 @@ days(times::TimeIndices) = (
 
 
 function npv_capex(
-    x::T, times::TimeIndices,
-    wacc::Float64, npv_year::Int
+    x::T, times::TimeIndices;
+    wacc::Float64=0., npv_year::Int=0
 ) where T
+
+    !iszero(wacc) && iszero(npv_year) &&
+        error("An NPV reference year must be provided if the WACC is non-zero")
 
     result = 0
 
@@ -97,10 +98,13 @@ function npv_capex(
 
 end
 
-function npv_opex(
-    f::Function, x::T, times::TimeIndices,
-    discount_rate::Float64, npv_year::Int
+function npv_yearly_recurring(
+    f::Function, x::T, times::TimeIndices;
+    discount_rate::Float64=0., npv_year::Int=0
 ) where T
+
+    !iszero(discount_rate) && iszero(npv_year) &&
+        error("An NPV reference year must be provided if the discount rate is non-zero")
 
     result = 0
 
@@ -117,10 +121,13 @@ function npv_opex(
 
 end
 
-function npv_opex(
-    f::Function, xs::Vector{T}, times::TimeIndices,
-    discount_rate::Float64, npv_year::Int
+function npv_yearly_recurring(
+    f::Function, xs::Vector{T}, times::TimeIndices;
+    discount_rate::Float64=0., npv_year::Int=0
 ) where T
+
+    !iszero(discount_rate) && iszero(npv_year) &&
+        error("An NPV reference year must be provided if the discount rate is non-zero")
 
     result = 0
 
@@ -137,7 +144,6 @@ function npv_opex(
 
 end
 
-# TODO: Choose more application-agnostic names here?
 const InvestmentDataArray{T} = Vector{T} # n_investment_years
 const DispatchDataArray{T} = Array{T,3} # N_HOURS_IN_DAY x n_dispatch_days x n_investment_years
 

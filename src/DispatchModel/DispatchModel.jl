@@ -17,7 +17,7 @@ import ..DispatchableThermalTech, ..DispatchableVariableTech,
        ..variabletechs, ..storagetechs, ..thermaltechs,
        ..solve!, ..powerunits_MW, ..N_HOURS_IN_DAY, ..co2_offset_cost
 
-import ..Data: annualization_factor, dayidx
+import ..Data: dayidx
 
 using ..Data
 
@@ -31,7 +31,8 @@ export DispatchProblem, DispatchSequence, DispatchDay, DispatchProxyMappings,
        seasonalperiods_byyear, monthlyperiods_byyear, weeklyperiods_byyear,
        dailyperiods, fullchronologyperiods,
        n_decision_days, n_represented_days, n_decision_hours,
-       n_represented_hours, cost, co2, co2_offset_cost
+       n_represented_hours, cost, co2, demand, co2_offset_cost,
+       annualized_cost, annualized_co2, annualized_demand, annualized_co2_offset_cost
 
 struct DispatchProblem{D<:DispatchSequence}
 
@@ -44,8 +45,11 @@ struct DispatchProblem{D<:DispatchSequence}
 
     function DispatchProblem(
         system::SystemParams, invyear::Int, periods::DispatchProxyMappings,
-        optimizer; voll::Float64=NaN, co2_max_intensity::Float64=NaN,
-        co2_offset_price::Float64=999., unit_commitment::Bool=true
+        optimizer;
+        voll::Float64=NaN, # $/MWh
+        co2_intensity_max::Float64=NaN, # kg/MWh
+        co2_offset_price::Float64=999., # $/tonne
+        unit_commitment::Bool=true
     )
 
        length(periods.mappings) == 1 ||
@@ -53,17 +57,17 @@ struct DispatchProblem{D<:DispatchSequence}
                  "DispatchSequence at a time. Formulate a separate " *
                  "DispatchProblem for each desired sequence.")
 
-        co2_max = co2_max_intensity * avg_annual_energy(system, invyear) *
-                    powerunits_MW * 1e-3 # in annual tonnes
+        # Convert to tonnes/powerunits_MWh
+        co2_intensity_max *= powerunits_MW * 1e-3
 
         m = JuMP.direct_model(optimizer)
 
         dispatch = DispatchSequence(m, system, invyear, periods, voll=voll,
-                                    co2_max=co2_max,
+                                    co2_intensity_max=co2_intensity_max,
                                     co2_offset_price=co2_offset_price,
                                     unit_commitment=unit_commitment)
 
-        @objective(m, Min, annualization_factor(periods) * cost(dispatch))
+        @objective(m, Min, cost(dispatch))
 
         return new{typeof(dispatch)}(m, system, invyear, dispatch)
 
