@@ -1,4 +1,3 @@
-
 struct ThermalDispatch{G<:DispatchableThermalTech}
 
     dispatch::Vector{JuMP.VariableRef}
@@ -33,10 +32,10 @@ struct ThermalDispatch{G<:DispatchableThermalTech}
             units_committed = @variable(m, [1:T], integer=true, lower_bound = 0)
             varnames!(units_committed, "tech_units_committed[$(fullname)]", 1:T)
 
-            units_startup = @variable(m, [1:T], binary=true, lower_bound = 0)
+            units_startup = @variable(m, [1:T], integer=true, lower_bound = 0)
             varnames!(units_startup, "tech_units_startup[$(fullname)]", 1:T)
 
-            units_shutdown = @variable(m, [1:T], binary=true, lower_bound = 0)
+            units_shutdown = @variable(m, [1:T], integer=true, lower_bound = 0)
             varnames!(units_shutdown, "tech_units_shutdown[$(fullname)]", 1:T)
 
             units_committed_max = @constraint(m, [t in 1:T],
