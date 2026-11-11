@@ -18,7 +18,8 @@ import ..powerunits_MW, ..maxpower, ..maxenergy, ..N_HOURS_IN_DAY,
        ..JuMP_LessThanConstraintRef, ..JuMP_EqualToConstraintRef, ..solve!
 
 export AdequacyProblem, AdequacyResult, solve, neue, neues,
-    neue_estimates, eue_estimates, lole_estimates
+    neue_estimates, eue_estimates, lole_estimates,
+    neue_estimate, eue_estimate, lole_estimate
 
 include("mean_variance.jl")
 
@@ -277,6 +278,8 @@ function solve_singlethreaded(
     opt = AdequacyOptimization(params, prob.optimizer)
     result = SingleThreadAdequacyResult(params.n_timesteps, params.n_storages)
 
+    ue_zero = sqrt(eps())
+
     for i in samples
 
         sample_surplus!(opt, params, i)
@@ -286,10 +289,10 @@ function solve_singlethreaded(
 
         ues = unserved(opt)
         update!(result.eues, ues)
-        update!(result.lolps, float.(ues .> 1e-3))
+        update!(result.lolps, float.(ues .> ue_zero))
 
         update!(result.eue, sum(ues))
-        update!(result.lole, float.(sum(ues .> 1e-3)))
+        update!(result.lole, float.(sum(ues .> ue_zero)))
 
         update!(result.generation_dEUEs, grid_dual(opt))
         update!(result.storage_power_dEUEs, stor_power_dual(opt))

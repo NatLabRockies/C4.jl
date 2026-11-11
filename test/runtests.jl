@@ -24,6 +24,8 @@ optimizer = optimizer_with_attributes(
     "log_to_console" => false,
 )
 
+include("thermal_dispatch.jl")
+
 sys = SystemParams("Data/toysystem", opex_endyears=10)
 display(sys)
 
