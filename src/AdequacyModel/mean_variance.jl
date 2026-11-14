@@ -31,6 +31,9 @@ mean_stderr(mv::MeanVariance) = mv.mean, sqrt(mv.M2) / mv.n
 
 function merge!(mv1::MeanVariance, mv2::MeanVariance)
 
+    # Exit if there's no data to merge
+    iszero(mv2.n) && return
+
     n = mv1.n + mv2.n
 
     delta = mv2.mean - mv1.mean
@@ -92,6 +95,9 @@ mean_stderr(mv::MeanVarianceVector) = mv.mean, sqrt.(mv.M2) ./ mv.n
 function merge!(mv1::MeanVarianceVector, mv2::MeanVarianceVector)
 
     length(mv1.mean) == length(mv2.mean) || error("Vector lengths must match")
+
+    # Exit if there's no data to merge
+    iszero(mv2.n) && return
 
     n = mv1.n + mv2.n
 

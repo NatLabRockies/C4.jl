@@ -99,9 +99,12 @@ struct EUECuttingPlaneParams
     function EUECuttingPlaneParams(
         builds::SystemExpansion, adequacy::AdequacyResult, invyear::Int)
 
-        base_eue = sum(adequacy.eues[:, :, invyear]) / powerunits_MW
+        base_eue = sum(adequacy.eue[invyear]) / powerunits_MW
 
+        # Note these have been pre-divided by the number of dispatch years,
+        # so that later summation produces the proper annual average values
         gen_dEUEs = adequacy.generation_dEUEs[:, :, invyear]
+
         stor_power_dEUEs = adequacy.storage_power_dEUEs[:, invyear]
         stor_energy_dEUEs = adequacy.storage_energy_dEUEs[:, invyear]
 
@@ -124,31 +127,27 @@ struct EUECuttingPlaneParams
 
 end
 
-function cuttingplane(
-    m::JuMP.Model, eue::JuMP.VariableRef, params::EUECuttingPlaneParams,
-    builds::SystemExpansion, invyear::Int)
+function eue_estimate(
+    params::EUECuttingPlaneParams, builds::SystemExpansion, invyear::Int)
 
-    eue_estimate = params.base_eue
+    estimate = params.base_eue
 
-    eue_estimate += sum(eue_adjustment(riskparams, build, invyear)
+    estimate += sum(eue_adjustment(riskparams, build, invyear)
         for (riskparams, build) in zip(params.thermaltechs, builds.thermaltechs);
         init=0
     )
 
-    eue_estimate += sum(eue_adjustment(riskparams, build, invyear)
+    estimate += sum(eue_adjustment(riskparams, build, invyear)
         for (riskparams, build) in zip(params.variabletechs, builds.variabletechs);
         init=0
     )
 
-    eue_estimate += sum(eue_adjustment(riskparams, build, invyear)
+    estimate += sum(eue_adjustment(riskparams, build, invyear)
         for (riskparams, build) in zip(params.storagetechs, builds.storagetechs);
         init=0
     )
 
-    plane = @constraint(m, eue >= eue_estimate)
-    JuMP.set_name(plane, "eue_cutting_plane")
-
-    return plane
+    return estimate
 
 end
 
@@ -158,23 +157,29 @@ struct ReliabilityConstraints
 
     eue::JuMP.VariableRef
     eue_max::JuMP_LessThanConstraintRef
+
+    eue_estimators::Vector{JuMP_ExpressionRef}
     eue_cuttingplanes::Vector{JuMP_GreaterThanConstraintRef}
 
     function ReliabilityConstraints(
         m::JuMP.Model, builds::SystemExpansion, invyear::Int,
         eue_params::Vector{EUECuttingPlaneParams}, eue_max::Float64)
 
-        eue = @variable(m, lower_bound = 0)
-        JuMP.set_name(eue, "eue")
+        n_planes = length(eue_params)
 
-        eue_max = @constraint(m, eue <= eue_max)
-        JuMP.set_name(eue_max, "eue_max")
+        eue = @variable(m, lower_bound = 0, base_name="eue[$invyear]")
+        eue_max = @constraint(m, eue <= eue_max, base_name="eue_max[$invyear]")
 
-        eue_cuttingplanes = [cuttingplane(m, eue, params, builds, invyear)
-                             for params in eue_params]
+        estimators = [eue_estimate(params, builds, invyear) for params in eue_params]
 
-        new(eue_params, eue, eue_max, eue_cuttingplanes)
+        cuttingplanes = @constraint(m, [p in 1:n_planes],
+            eue >= estimators[p], base_name="eue_cuttingplane[$invyear]")
+
+        new(eue_params, eue, eue_max, estimators, cuttingplanes)
 
     end
 
 end
+
+eue_internal(rc::ReliabilityConstraints) =
+    maximum(value(eue_est) for eue_est in rc.eue_estimators; init=0.)

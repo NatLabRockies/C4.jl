@@ -45,8 +45,8 @@ function iterate_ra_cem(
     ram_result = solve(ram)
     ram_end = now()
 
-    println("NEUEs: ", neues(ram_result),
-            "\tLOLEs: ", vec(sum(ram_result.lolps, dims=(1,2))))
+    println("NEUEs: ", neues(ram_result))
+    println("LOLEs: ", ram_result.lole)
 
     aug_start = now()
 
@@ -114,8 +114,15 @@ function iterate_ra_cem(
         ram_result = solve(ram)
         ram_end = now()
 
-        println("NEUEs: ", neues(ram_result),
-                "\tLOLEs: ", vec(sum(ram_result.lolps, dims=(1,2))))
+        cem_neues = neues_internal(cem)
+        println("CEM NEUEs: ", cem_neues)
+
+        ram_neues = neues(ram_result)
+        println("RAM NEUEs: ", ram_neues)
+        println("RAM LOLEs: ", ram_result.lole)
+
+       any(cem_neues .> ram_neues .* (1 + neue_tol)) &&
+           @error("CEM overestimated true EUE - potential EUE surface problem")
 
         is_adequate = all(
             neue(ram_result, i) <= max_neue * (1 + neue_tol)

@@ -45,7 +45,7 @@ struct AdequacyProblem
 
 end
 
-mutable struct SingleThreadAdequacyResult
+mutable struct DispatchYearAdequacyAccumulator
 
     n_samples::Int
 
@@ -59,7 +59,7 @@ mutable struct SingleThreadAdequacyResult
     storage_power_dEUEs::MeanVarianceVector # n_storages
     storage_energy_dEUEs::MeanVarianceVector # n_storages
 
-    function SingleThreadAdequacyResult(n_timesteps::Int, n_storages::Int)
+    function DispatchYearAdequacyAccumulator(n_timesteps::Int, n_storages::Int)
 
         lolps = MeanVarianceVector(n_timesteps)
         eues = MeanVarianceVector(n_timesteps)
@@ -79,7 +79,7 @@ mutable struct SingleThreadAdequacyResult
 end
 
 function merge!(
-    result::SingleThreadAdequacyResult, other::SingleThreadAdequacyResult)
+    result::DispatchYearAdequacyAccumulator, other::DispatchYearAdequacyAccumulator)
 
     result.n_samples += other.n_samples
 
@@ -97,16 +97,54 @@ function merge!(
 
 end
 
-function expect_samplecount!(res::SingleThreadAdequacyResult, count::Int)
-    res.lolps.n = count
-    res.eues.n = count
-    res.generation_dEUEs.n = count
-    return
+mutable struct InvestmentYearAdequacyAccumulator
+
+    lolps::MeanVarianceVector # n_timesteps
+    eues::MeanVarianceVector # n_timesteps
+
+    lole_sum::Float64
+    lole_sum_variance::Float64
+
+    eue_sum::Float64
+    eue_sum_variance::Float64
+
+    generation_dEUEs::MeanVarianceVector # n_timesteps
+
+    storage_power_dEUEs_sum::Vector{Float64} # n_storages
+    storage_power_dEUEs_sum_variance::Vector{Float64}
+
+    storage_energy_dEUEs_sum::Vector{Float64} # n_storages
+    storage_energy_dEUEs_sum_variance::Vector{Float64}
+
+    function InvestmentYearAdequacyAccumulator(
+        n_timesteps::Int, n_storages::Int, n_samples::Int)
+
+        lolps = MeanVarianceVector(n_timesteps)
+        lolps.n = n_samples
+
+        eues = MeanVarianceVector(n_timesteps)
+        eues.n = n_samples
+
+        generation_dEUEs = MeanVarianceVector(n_timesteps)
+        generation_dEUEs.n = n_samples
+
+        storage_power_dEUEs = zeros(n_storages)
+        storage_power_dEUEs_variance = zeros(n_storages)
+
+        storage_energy_dEUEs = zeros(n_storages)
+        storage_energy_dEUEs_variance = zeros(n_storages)
+
+        return new(lolps, eues, 0., 0., 0., 0., generation_dEUEs,
+                   storage_power_dEUEs, storage_power_dEUEs_variance,
+                   storage_energy_dEUEs, storage_energy_dEUEs_variance)
+
+    end
+
 end
 
 function collect!(
-    overall::SingleThreadAdequacyResult,
-    subset::SingleThreadAdequacyResult,
+    overall::InvestmentYearAdequacyAccumulator,
+    subset::DispatchYearAdequacyAccumulator,
     range::UnitRange{Int})
 
     # Collect the subsetted time series data directly into the overall result
@@ -123,10 +161,23 @@ function collect!(
     # duration-weighted - the difference only matters when dispatch year
     # lengths are substantially different
 
-    merge!(overall.lole, subset.lole)
-    merge!(overall.eue, subset.eue)
-    merge!(overall.storage_power_dEUEs, subset.storage_power_dEUEs)
-    merge!(overall.storage_energy_dEUEs, subset.storage_energy_dEUEs)
+    lole_mean, lole_var = mean_var(subset.lole)
+    overall.lole_sum += lole_mean
+    overall.lole_sum_variance += lole_var
+
+    eue_mean, eue_var = mean_var(subset.eue)
+    overall.eue_sum += eue_mean
+    overall.eue_sum_variance += eue_var
+
+    stor_power_dEUEs_mean, stor_power_dEUEs_var = mean_var(subset.storage_power_dEUEs)
+    overall.storage_power_dEUEs_sum += stor_power_dEUEs_mean
+    overall.storage_power_dEUEs_sum_variance += stor_power_dEUEs_var
+
+    stor_energy_dEUEs_mean, stor_energy_dEUEs_var = mean_var(subset.storage_energy_dEUEs)
+    overall.storage_energy_dEUEs_sum += stor_energy_dEUEs_mean
+    overall.storage_energy_dEUEs_sum_variance += stor_energy_dEUEs_var
+
+    return
 
 end
 
@@ -158,14 +209,15 @@ struct AdequacyResult
     storage_energy_dEUEs_stderr::Matrix{Float64}
 
     function AdequacyResult(
-        prob::AdequacyProblem, results::Vector{SingleThreadAdequacyResult})
+        prob::AdequacyProblem, results::Vector{InvestmentYearAdequacyAccumulator})
 
         n_days = n_dispatch_days(prob.sys.times)
+        n_dispyears = n_dispatch_years(prob.sys.times)
         n_invyears = n_investment_years(prob.sys.times)
 
         # TODO: We assume this stays constant, which it does,
         #       but something cleaner would be nice
-        n_storages = length(first(results).storage_power_dEUEs)
+        n_storages = length(first(results).storage_power_dEUEs_sum)
 
         lolps = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
         lolps_stderr = Array{Float64, 3}(undef, N_HOURS_IN_DAY, n_days, n_invyears)
@@ -190,24 +242,38 @@ struct AdequacyResult
 
         for (i, result) in enumerate(results)
 
-            n = result.n_samples
-
             store_results!(lolps, lolps_stderr, result.lolps, i, n_days)
             store_results!(eues, eues_stderr, result.eues, i, n_days)
 
-            store_results!(lole, lole_stderr, result.lole, i)
-            store_results!(eue, eue_stderr, result.eue, i)
+            lole[i] = result.lole_sum / n_dispyears
+            lole_stdev_i = sqrt(result.lole_sum_variance) / n_dispyears
+            lole_stderr[i] = lole_stdev_i / sqrt(prob.samples)
+
+            eue[i] = result.eue_sum / n_dispyears
+            eue_stdev_i = sqrt(result.eue_sum_variance) / n_dispyears
+            eue_stderr[i] = eue_stdev_i / sqrt(prob.samples)
 
             store_results!(generation_dEUEs, generation_dEUEs_stderr,
                            result.generation_dEUEs, i, n_days)
 
-            store_results!(stor_power_dEUEs, stor_power_dEUEs_stderr,
-                           result.storage_power_dEUEs, i)
+            stor_power_dEUEs[:, i] = result.storage_power_dEUEs_sum / n_dispyears
+            stor_power_dEUEs_stdev =
+                sqrt.(result.storage_power_dEUEs_sum_variance) / n_dispyears
+            stor_power_dEUEs_stderr[:, i] = stor_power_dEUEs_stdev / sqrt(prob.samples)
 
-            store_results!(stor_energy_dEUEs, stor_energy_dEUEs_stderr,
-                           result.storage_energy_dEUEs, i)
+            stor_energy_dEUEs[:, i] = result.storage_energy_dEUEs_sum / n_dispyears
+            stor_energy_dEUEs_stdev =
+                sqrt.(result.storage_energy_dEUEs_sum_variance) / n_dispyears
+            stor_energy_dEUEs_stderr[:, i] = stor_energy_dEUEs_stdev / sqrt(prob.samples)
 
         end
+
+        # TODO: This is super ugly, we bake in the dispatch year averaging here
+        #       to avoid passing the number of dispatch years around later.
+        #       This means generator dEUE calculations can be done as the inner
+        #       product of dEUE and generator availability alone. Clean this up!
+        generation_dEUEs ./= n_dispyears
+        generation_dEUEs_stderr ./= n_dispyears
 
         return new(
             prob.sys.times, prob.sys.demand * powerunits_MW,
@@ -234,33 +300,6 @@ function store_results!(
 
 end
 
-function store_results!(
-    dst_mean::Matrix{Float64}, dst_std::Matrix{Float64},
-    src::MeanVarianceVector, invyear::Int)
-
-   src_mean, src_std = mean_stderr(src)
-
-   dst_mean[:, invyear] = src_mean
-   dst_std[:, invyear] = src_std
-
-   return
-
-end
-
-function store_results!(
-    dst_mean::Vector{Float64}, dst_std::Vector{Float64},
-    src::MeanVariance, invyear::Int)
-
-   src_mean, src_std = mean_stderr(src)
-
-   dst_mean[invyear] = src_mean
-   dst_std[invyear] = src_std
-
-   return
-
-end
-
-
 function makeseeds(samples::Channel{Int}, n_samples::Int)
 
     for i in 1:n_samples
@@ -273,12 +312,12 @@ end
 
 function solve_singlethreaded(
     prob::AdequacyProblem, params::AdequacyParams,
-    samples::Channel{Int}, results::Channel{SingleThreadAdequacyResult})
+    samples::Channel{Int}, results::Channel{DispatchYearAdequacyAccumulator})
 
     opt = AdequacyOptimization(params, prob.optimizer)
-    result = SingleThreadAdequacyResult(params.n_timesteps, params.n_storages)
+    result = DispatchYearAdequacyAccumulator(params.n_timesteps, params.n_storages)
 
-    ue_zero = sqrt(eps())
+    ue_zero = 1e-6
 
     for i in samples
 
@@ -312,21 +351,21 @@ function solve(prob::AdequacyProblem)
     n_timesteps_total = n_dispatch_hours(prob.sys.times)
     n_storages = length(prob.sys.storagetechs_existing)
 
-    results = Vector{SingleThreadAdequacyResult}(undef, n_invyears)
+    results = Vector{InvestmentYearAdequacyAccumulator}(undef, n_invyears)
 
     println("Running RA checks...")
 
     for invyear in eachindex(results)
 
-        result_invyear = SingleThreadAdequacyResult(n_timesteps_total, n_storages)
-        expect_samplecount!(result_invyear, prob.samples)
+        result_invyear = InvestmentYearAdequacyAccumulator(
+            n_timesteps_total, n_storages, prob.samples)
 
         for (d, d_range) in enumerate(dispatch_year_dayranges(prob.sys.times))
 
             println("Investment Year $invyear \t Dispatch Year $d")
 
             samples_in = Channel{Int}()
-            results_out = Channel{SingleThreadAdequacyResult}(n_threads)
+            results_out = Channel{DispatchYearAdequacyAccumulator}(n_threads)
 
             params = AdequacyParams(prob.sys, d_range, invyear)
 

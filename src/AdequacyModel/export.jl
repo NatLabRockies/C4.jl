@@ -66,13 +66,9 @@ function store(con::DBInterface.Connection, iter::Int, result::AdequacyResult)
     appender = AdequacyAppender(con)
     for (i, invyear) in enumerate(result.times.investment_years)
 
-        demand = sum(result.demand[:, :, i])
-
-        eue = result.eue[i]
-        eue_stderr = result.eue_stderr[i]
-
-        lole = result.lole[i]
-        lole_stderr = result.lole_stderr[i]
+        demand = avg_annual_energy(result, i)
+        eue, eue_stderr = eue_estimate(result, i)
+        lole, lole_stderr = lole_estimate(result, i)
 
         DuckDB.append(appender.adequacies, iter)
         DuckDB.append(appender.adequacies, invyear)

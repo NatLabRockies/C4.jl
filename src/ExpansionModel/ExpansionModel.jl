@@ -2,7 +2,7 @@ module ExpansionModel
 
 import JuMP
 import JuMP: @variable, @constraint, @expression, @objective,
-             value, set_upper_bound
+             value, set_upper_bound, constraint_object
 
 import  ..JuMP_GreaterThanConstraintRef, ..JuMP_LessThanConstraintRef,
         ..JuMP_ExpressionRef,
@@ -37,7 +37,8 @@ include("build.jl")
 include("riskestimates.jl")
 
 export ExpansionProblem, EUECuttingPlaneParams, warmstart_builds!, solve!,
-       capex, opex, cost, lcoe, co2_offset_cost, emissions_intensity, nullestimator
+       capex, opex, cost, lcoe, co2_offset_cost, emissions_intensity,
+       nullestimator, neues_internal
 
 mutable struct ExpansionProblem
 
@@ -208,6 +209,10 @@ function emissions_intensity(prob::ExpansionProblem)
     return co2(prob) * 1e3 / demand
 
 end
+
+neues_internal(prob::ExpansionProblem) = [
+    eue_internal(rc) / avg_annual_energy(prob.system, i) * 1e6
+    for (i, rc) in enumerate(prob.reliabilityconstraints)]
 
 function warmstart_builds!(prob::ExpansionProblem, prev_prob::ExpansionProblem)
     warmstart_builds!.(prob.builds.thermaltechs, prev_prob.builds.thermaltechs)
