@@ -25,6 +25,7 @@ optimizer = optimizer_with_attributes(
 )
 
 include("thermal_dispatch.jl")
+include("storage_dispatch.jl")
 
 sys = SystemParams("Data/toysystem", opex_endyears=10)
 display(sys)
