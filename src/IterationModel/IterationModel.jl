@@ -231,6 +231,9 @@ function add_stressperiod(
     skip_existing::Bool=false
 )
 
+    # Don't bother adding a stress period if there's no unserved energy
+    adequacy.eue[invyear] < 1e-4 && return times
+
     # TODO: Investigate using adequacy.generation_dEUEs (or both)?
     day_eues = vec(sum(adequacy.eues[:, :, invyear], dims=1))
     og_new_day_idx = argmax(day_eues)
