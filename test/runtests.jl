@@ -34,7 +34,8 @@ display(sys)
 timestamp = Dates.format(now(), "yyyymmddHHMMSS")
 
 fullchrono = fullchronologyperiods(sys)
-
+fullchronos = [fullchronologyperiods(sys)
+               for i in eachindex(sys.times.investment_years)]
 repeatedchrono = [singleperiod(sys, i)
                   for i in eachindex(sys.times.investment_years)]
 
@@ -110,9 +111,9 @@ println("\nNEUEs = ", neue_estimates(ram_results))
 
 println("\nSingle-region Iterative CEM:")
 cem, ram, pcm = iterate_neue(
-    sys, repeatedchrono, max_neue, optimizer,
+    sys, fullchronos, max_neue, optimizer,
     nsamples=100_000, check_dispatch_invyears=[1 ,2], check_dispatch_voll=voll,
-    outfile=timestamp * ".db", unit_commitment=true,
+    outfile=timestamp * "_neue.db", unit_commitment=true,
     co2_intensity_max=[50., 50.], co2_offset_price=100.)
 
 sys_built = SystemParams(cem)
@@ -155,3 +156,7 @@ pcm = DispatchProblem(sys_built, 2, last(repeatedchrono), optimizer,
 solve!(pcm)
 println("2050 Operating Cost: ", value(cost(pcm)))
 println("2050 Carbon Offset Cost (included in opex): ", value(co2_offset_cost(pcm)))
+
+sweep_iterate_neue(
+    sys, fullchronos, [40., 20, 10, 5, 2.5], optimizer,
+    nsamples=100_000, outfile_prefix=timestamp * "_neue")

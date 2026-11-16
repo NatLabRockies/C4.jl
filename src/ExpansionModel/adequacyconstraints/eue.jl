@@ -163,11 +163,16 @@ eue_internal(constrs::EUEConstraints) =
     maximum(value(eue_est) for eue_est in constrs.eue_estimators; init=0.)
 
 struct EUEParameters <: AdequacyParameters
-    planes::Vector{EUECuttingPlaneParams}
-    eue_max::Float64 # in powerunits_MW
 
-    function EUEParameters(eue_max::Float64)
-        return new(EUECuttingPlaneParams[], eue_max)
+    eue_max::Float64 # in powerunits_MW
+    planes::Vector{EUECuttingPlaneParams}
+
+    function EUEParameters(
+        eue_max::Float64,
+        planes::Vector{EUECuttingPlaneParams}=EUECuttingPlaneParams[])
+
+        return new(eue_max, planes)
+
     end
 
 end
