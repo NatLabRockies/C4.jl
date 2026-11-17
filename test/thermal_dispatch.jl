@@ -51,7 +51,7 @@ co2_offset_price = 100. # $/tonne
     fuel_burn = generation * heat_rate
     total_co2 = fuel_burn * fuel_co2
     total_cost = fuel_burn * fuel_cost + generation * thermal_vom +
-                 unserved_energy * voll 
+                 unserved_energy * voll
 
     @test total_cost ≈ value(cost(pcm))
     @test total_co2 ≈ value(co2(pcm))
@@ -111,7 +111,7 @@ end
     fuel_burn = generation * heat_rate + startups * startup_heat
     total_co2 = fuel_burn * fuel_co2
     total_cost = fuel_burn * fuel_cost + generation * thermal_vom +
-                 unserved_energy * voll 
+                 unserved_energy * voll
 
     @test total_cost ≈ value(cost(pcm))
     @test total_co2 ≈ value(co2(pcm))
@@ -181,6 +181,32 @@ end
 
     nue_mean, nue_stderr = neue_estimate(ram_results, 1)
     @test nue_mean - 2*nue_stderr <= neue <= nue_mean + 2*nue_stderr
+
+end
+
+@testset "Expansion Cost Scaling" begin
+
+    null_eue = [EUECuttingPlaneParams[]]
+    max_eues = [0.]
+
+    cem = ExpansionProblem(sys, [fullchrono], null_eue, max_eues, optimizer,
+                           cem_voll=voll)
+    solve!(cem)
+
+    generation = 900 + 600
+    unserved_energy = 200
+    startups = 2
+
+    fuel_burn = generation * heat_rate + startups * startup_heat
+    total_co2 = fuel_burn * fuel_co2
+    total_cost = fuel_burn * fuel_cost + generation * thermal_vom +
+                 unserved_energy * voll
+
+    @test value(cost(cem.dispatches[1])) ≈ total_cost
+    @test abs(value(co2_offset_cost(cem))) < 1e-4
+    @test abs(value(capex(cem))) < 1e-4
+    @test value(opex(cem)) ≈ total_cost * 8766/48
+    @test value(cost(cem)) ≈ total_cost * 8766/48
 
 end
 
