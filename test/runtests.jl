@@ -9,7 +9,8 @@ using C4.IterationModel
 
 import C4: store, powerunits_MW
 import C4.ExpansionModel: cost_capex, cost_fom
-import C4.DispatchModel: generation_cost, co2_offset_cost
+import C4.DispatchModel: generation_cost, co2_offset_cost,
+                         DispatchDay, DispatchProxyMapping, DispatchProxyMappings
 
 using DuckDB
 

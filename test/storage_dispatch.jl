@@ -172,4 +172,74 @@ end
 
 end
 
+@testset "Pooled Chronologies for Multi-Dispatch-Year Expansion" begin
+
+    null_eues = [EUECuttingPlaneParams[]]
+    max_eues = [0.]
+
+    # Custom chronology with Y1 = A -> B, Y2 = C -> A
+    chronologies = [DispatchProxyMappings([
+        DispatchDay("Day A", 1, sys.times),
+        DispatchDay("Day B", 2, sys.times),
+        DispatchDay("Day C", 3, sys.times)
+    ], [
+        DispatchProxyMapping(1:2, [1, 2]),
+        DispatchProxyMapping(3:4, [3, 1])
+    ])]
+
+    cem = ExpansionProblem(sys, chronologies, null_eues, max_eues, optimizer,
+                           cem_voll=voll)
+    solve!(cem)
+
+    # With expansion candidates prepended, storage becomes storagetech #2
+    # and variable becomes variabletech #3
+
+    @test value(sum(cem.dispatches[1].dispatches[1].storagetechs[2].dispatch)) +
+          value(sum(cem.dispatches[1].dispatches[2].storagetechs[2].dispatch)) < eps()
+
+    @test value(sum(cem.dispatches[1].dispatches[3].storagetechs[2].dispatch)) +
+          value(sum(cem.dispatches[1].dispatches[1].storagetechs[2].dispatch)) < eps()
+
+    # Variable generation covers load net of storage charging/discharging
+    # and unserved energy
+    @test value(sum(cem.dispatches[1].dispatches[1].variabletechs[3].dispatch)) ≈ 10.4
+    @test value(sum(cem.dispatches[1].dispatches[2].variabletechs[3].dispatch)) ≈ 10.9
+    @test value(sum(cem.dispatches[1].dispatches[3].variabletechs[3].dispatch)) ≈ 10.4
+    
+    @test value(cost(cem.dispatches[1].dispatches[1].variabletechs[3], 1)) ≈ 104.
+    @test value(cost(cem.dispatches[1].dispatches[2].variabletechs[3], 1)) ≈ 109.
+    @test value(cost(cem.dispatches[1].dispatches[3].variabletechs[3], 1)) ≈ 104.
+
+    @test value(cost(cem.dispatches[1].dispatches[1].storagetechs[2], 1)) ≈ 250.
+    @test value(cost(cem.dispatches[1].dispatches[2].storagetechs[2], 1)) ≈ 250.
+    @test value(cost(cem.dispatches[1].dispatches[3].storagetechs[2], 1)) ≈ 270.
+
+    cost_a = 104. + 250. + 60*voll
+    cost_b = 109. + 250. + 20*voll
+    cost_c = 104. + 270. # as a smaller number (no VOLL penalty), more
+                         # susceptible to floating point errors outside
+                         # relative tolerance (hence atols below)
+
+    @test value(cost(cem.dispatches[1].dispatches[1])) ≈ cost_a
+    @test value(cost(cem.dispatches[1].dispatches[2])) ≈ cost_b
+    @test value(cost(cem.dispatches[1].dispatches[3])) ≈ cost_c atol=0.001
+
+    @test value(cost(cem.dispatches[1].recurrences[1][1])) ≈ cost_a
+    @test value(cost(cem.dispatches[1].recurrences[1][2])) ≈ cost_b
+    @test value(cost(cem.dispatches[1].recurrences[2][1])) ≈ cost_c atol=0.001
+    @test value(cost(cem.dispatches[1].recurrences[2][2])) ≈ cost_a
+
+    # Given net load levels, only one cost-minimzing SoC trajectory is possible
+    @test value(cem.dispatches[1].recurrences[1][1].storagetechs[2].soc_last) ≈ .1 atol=0.001
+    @test value(cem.dispatches[1].recurrences[1][2].storagetechs[2].soc_last) ≈ .4
+    @test value(cem.dispatches[1].recurrences[2][1].storagetechs[2].soc_last) ≈ .7
+    @test value(cem.dispatches[1].recurrences[2][2].storagetechs[2].soc_last) ≈ .4
+
+    total_cost = 2*cost_a + cost_b + cost_c
+
+    @test value(cost(cem.dispatches[1])) ≈ total_cost
+    @test value(opex(cem)) ≈ total_cost * 8766/96
+
+end
+
 end
